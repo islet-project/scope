@@ -1,0 +1,114 @@
+--- rel0_old.rs	2025-12-12 20:08:37.608811281 +0900
++++ rel0.rs	2025-12-12 20:13:54.829735537 +0900
+@@ -942,9 +942,9 @@
+   && (result.is_Ok() ==> RttsAllProtectedEntriesRipas(new_s,  Realm(new_s, rd).rtt_base, Realm(new_s, rd).rtt_num_start as int, EMPTY))
+   && (result.is_Ok() ==> Equal(Realm(new_s, rd).feat_lpa2, RealmParams(new_s, params_ptr).flags.lpa2))
+   && (result.is_Ok() ==> Realm(new_s, rd).ipa_width == RealmParams(new_s, params_ptr).s2sz)
+-  && (result.is_Ok() ==> Equal(Realm(new_s, rd).hash_algo, RealmParams(new_s, params_ptr).hash_algo))
++  //&& (result.is_Ok() ==> Equal(Realm(new_s, rd).hash_algo, RealmParams(new_s, params_ptr).hash_algo))
+   && (result.is_Ok() ==> Realm(new_s, rd).measurements[0] == RimInit(new_s,  Realm(new_s, rd).hash_algo, RealmParams(new_s, params_ptr)))
+-  && (result.is_Ok() ==> (Realm(new_s, rd).measurements[1] == 0 && Realm(new_s, rd).measurements[2] == 0 && Realm(new_s, rd).measurements[3] == 0 && Realm(new_s, rd).measurements[4] == 0))
++  //&& (result.is_Ok() ==> (Realm(new_s, rd).measurements[1] == 0 && Realm(new_s, rd).measurements[2] == 0 && Realm(new_s, rd).measurements[3] == 0 && Realm(new_s, rd).measurements[4] == 0))
+   && (result.is_Ok() ==> Realm(new_s, rd).rtt_level_start == RealmParams(new_s, params_ptr).rtt_level_start)
+   && (result.is_Ok() ==> Realm(new_s, rd).rtt_num_start == RealmParams(new_s, params_ptr).rtt_num_start)
+   && (result.is_Ok() ==> Realm(new_s, rd).vmid == RealmParams(new_s, params_ptr).vmid)
+@@ -1032,7 +1032,7 @@
+   && (RecParams(old_s, params_ptr).num_aux != RecAuxCount(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!AuxAligned(old_s, RecParams(old_s, params_ptr).aux, RecParams(old_s, params_ptr).num_aux as int) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (AuxAlias(old_s, rec, RecParams(old_s, params_ptr).aux, RecParams(old_s, params_ptr).num_aux as int) ==> ResultEqual(result, RMI_ERROR_INPUT))
+-  && (!AuxStateEqual(RecParams(old_s, params_ptr).aux, RecParams(old_s, params_ptr).num_aux, DELEGATED) ==> ResultEqual(result, RMI_ERROR_INPUT))
++  && (!AuxStateEqual(RecParams(old_s, params_ptr).aux, RecParams(old_s, params_ptr).num_aux as int, DELEGATED) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (result.is_Ok() ==> Realm(new_s, rd).rec_index == Realm(new_s, rd).rec_index + 1)
+   && (result.is_Ok() ==> Granule(new_s, rec).state == REC)
+   && (result.is_Ok() ==> Rec(new_s, rec).owner == rd)
+@@ -1065,7 +1065,7 @@
+        !(RecParams(old_s, params_ptr).num_aux != RecAuxCount(old_s, rd)) &&
+        AuxAligned(old_s, RecParams(old_s, params_ptr).aux, RecParams(old_s, params_ptr).num_aux as int) &&
+        !(AuxAlias(old_s, rec, RecParams(old_s, params_ptr).aux, RecParams(old_s, params_ptr).num_aux as int)) &&
+-       AuxStateEqual(RecParams(old_s, params_ptr).aux, RecParams(old_s, params_ptr).num_aux, DELEGATED))
++       AuxStateEqual(RecParams(old_s, params_ptr).aux, RecParams(old_s, params_ptr).num_aux as int, DELEGATED))
+     ==> result.is_Ok())
+   && (result.is_Err()
+     ==> Realm(new_s, rd).rec_index == Realm(old_s, rd).rec_index)
+@@ -1471,12 +1471,12 @@
+ pub open spec fn rsi_measurement_extend_spec(index: UInt64, size: UInt64, value_0: Bits64, value_1: Bits64, value_2: Bits64, value_3: Bits64, value_4: Bits64, value_5: Bits64, value_6: Bits64, value_7: Bits64, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   (index < 1 || index > 4 ==> result == RSI_ERROR_INPUT)
+   && (size > 64 ==> result == RSI_ERROR_INPUT)
+-  && (result == RSI_SUCCESS ==> CurrentRealm(new_s).measurements[index] == RemExtend(new_s, CurrentRealm(new_s).hash_algo, CurrentRealm(new_s).measurements[index], [value_0, value_1, value_2, value_3,value_4, value_5, value_6, value_7][ (RMM_REALM_MEASUREMENT_WIDTH-1):0],size))
++  //&& (result == RSI_SUCCESS ==> CurrentRealm(new_s).measurements[index] == RemExtend(new_s, CurrentRealm(new_s).hash_algo, CurrentRealm(new_s).measurements[index], [value_0, value_1, value_2, value_3,value_4, value_5, value_6, value_7][ (RMM_REALM_MEASUREMENT_WIDTH-1):0],size))
+   && ((!(index < 1 || index > 4) &&
+        !(size > 64))
+     ==> result == RSI_SUCCESS)
+   && (result != RSI_SUCCESS
+-    ==> CurrentRealm(new_s).measurements[index] == CurrentRealm(old_s).measurements[index])
++    ==> CurrentRealm(new_s).measurements[index as int] == CurrentRealm(old_s).measurements[index as int])
+ }
+ 
+ pub open spec fn rsi_measurement_read_spec(index: UInt64, result: RsiCommandReturnCode, value_0: Bits64, value_1: Bits64, value_2: Bits64, value_3: Bits64, value_4: Bits64, value_5: Bits64, value_6: Bits64, value_7: Bits64, old_s: S, new_s: S) -> bool {
+@@ -1489,7 +1489,7 @@
+   (!AddrIsGranuleAligned(old_s, addr) ==> result == RSI_ERROR_INPUT)
+   && (!AddrIsProtected(old_s, addr, CurrentRealm(old_s)) ==> result == RSI_ERROR_INPUT)
+   && (result == RSI_SUCCESS ==> RealmConfig(new_s, addr).ipa_width == CurrentRealm(new_s).ipa_width)
+-  && (result == RSI_SUCCESS ==> Equal(RealmConfig(new_s, addr).hash_algo, CurrentRealm(new_s).hash_algo))
++  //&& (result == RSI_SUCCESS ==> Equal(RealmConfig(new_s, addr).hash_algo, CurrentRealm(new_s).hash_algo))
+   && ((AddrIsGranuleAligned(old_s, addr) &&
+        AddrIsProtected(old_s, addr, CurrentRealm(old_s)))
+     ==> result == RSI_SUCCESS)
+@@ -1578,7 +1578,7 @@
+ {
+   let old_walk = RttWalk_(old_s, rd, ipa,RMM_RTT_PAGE_LEVEL as int);
+   let new_walk = RttWalk_(new_s, rd, ipa,RMM_RTT_PAGE_LEVEL as int);
+-  assert(result.is_Ok() ==> (old_walk.rtte.ripas == EMPTY || old_walk.rtte.ripas == RAM));
++  assert(result.is_Ok() ==> (old_walk.rtte.ripas == EMPTY || old_walk.rtte.ripas == RAM)); // XXX: TP
+   assert(result.is_Ok() ==> (old_walk.rtte.state == ASSIGNED));
+   assert((result.is_Ok() && old_walk.rtte.ripas == EMPTY) ==> (new_walk.rtte.ripas == old_walk.rtte.ripas));
+   assert((result.is_Ok() && old_walk.rtte.ripas == RAM) ==> (new_walk.rtte.ripas == DESTROYED));
+@@ -1593,7 +1593,7 @@
+   assert(result.is_Ok() ==> (true));
+   assert(result.is_Ok() ==> (true));
+   assert(result.is_Ok() ==> (new_walk.rtte.ripas == old_walk.rtte.ripas));
+-  assert(result.is_Ok() ==> (new_walk.rtte.state == old_walk.rtte.state));
++  assert(result.is_Ok() ==> (new_walk.rtte.state == old_walk.rtte.state)); // XXX: FP
+ }
+ 
+ pub proof fn rmi_rtt_destroy_rule (rd: Address, ipa: Address, level: Int64, result: Result<(), RmiStatusCode>, rtt: Address, top: Address, old_s: S, new_s: S)
+@@ -1604,7 +1604,7 @@
+   assert(result.is_Ok() ==> (true));
+   // Unsupported
+   assert(result.is_Ok() ==> (new_walk.rtte.ripas == DESTROYED));
+-  assert(result.is_Ok() ==> (new_walk.rtte.state == old_walk.rtte.state));
++  assert(result.is_Ok() ==> (new_walk.rtte.state == old_walk.rtte.state)); // XXX: TP
+ }
+ 
+ pub proof fn rmi_rtt_fold_rule (rd: Address, ipa: Address, level: Int64, result: Result<(), RmiStatusCode>, rtt: Address, old_s: S, new_s: S)
+@@ -1614,8 +1614,8 @@
+   let new_walk = RttWalk_(new_s, rd, ipa,level - 1 as int);
+   // Unsupported
+   // Unsupported
+-  assert(result.is_Ok() ==> (new_walk.rtte.ripas == old_walk.rtte.ripas));
+-  assert(result.is_Ok() ==> (new_walk.rtte.state == old_walk.rtte.state));
++  assert(result.is_Ok() ==> (new_walk.rtte.ripas == old_walk.rtte.ripas)); // XXX: FP
++  assert(result.is_Ok() ==> (new_walk.rtte.state == old_walk.rtte.state)); // XXX: FP
+ }
+ 
+ pub proof fn rmi_rtt_init_ripas_rule (rd: Address, base: Address, top: Address, result: Result<(), RmiStatusCode>, out_top: Address, old_s: S, new_s: S)
+@@ -1625,8 +1625,8 @@
+   let new_walk = RttWalk_(new_s, rd,base,RMM_RTT_PAGE_LEVEL as int);
+   assert(result.is_Ok() ==> (true));
+   assert(result.is_Ok() ==> (old_walk.rtte.state == UNASSIGNED));
+-  assert(result.is_Ok() ==> (new_walk.rtte.ripas == RAM));
+-  assert(result.is_Ok() ==> (new_walk.rtte.state == old_walk.rtte.state));
++  assert(result.is_Ok() ==> (new_walk.rtte.ripas == RAM)); // XXX: FP
++  assert(result.is_Ok() ==> (new_walk.rtte.state == old_walk.rtte.state)); // XXX: FP
+ }
+ 
+ pub proof fn rmi_rtt_set_ripas_rule (rd: Address, rec_ptr: Address, base: Address, top: Address, result: Result<(), RmiStatusCode>, out_top: Address, old_s: S, new_s: S)
+@@ -1637,7 +1637,7 @@
+   // Unsupported
+   assert(result.is_Ok() ==> (true));
+   // Unsupported
+-  assert(result.is_Ok() ==> (new_walk.rtte.state == old_walk.rtte.state));
++  assert(result.is_Ok() ==> (new_walk.rtte.state == old_walk.rtte.state)); // XXX: FP
+ }
+ 
+ fn main() {

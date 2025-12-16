@@ -1,0 +1,844 @@
+--- alp11_coverage_old.rs	2025-12-14 17:05:01.154335504 +0900
++++ alp11_coverage.rs	2025-12-14 17:19:59.385008894 +0900
+@@ -1477,7 +1477,8 @@
+ pub open spec fn DeviceCommunicate1(s: S, vdev: RmmRdev) -> RmmDevCommState;
+ 
+ pub open spec fn DeviceCommunicate2(s: S, vdev: RmmVdev, data: RmiDevCommData) -> RmmDevCommState;
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rmi_data_create_spec(rd: Address, data: Address, ipa: Address, src: Address, flags: RmiDataFlags, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, src) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!GranuleAccessPermitted(old_s, src, PAS_NS) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1531,7 +1532,9 @@
+   && (result.is_Err()
+     ==> RealmAt(new_s, rd).measurements[0] == RealmAt(old_s, rd).measurements[0])
+ }
+-
++*/
++/*
++// XXX: UNCOVERED
+ pub open spec fn rmi_data_create_unknown_spec(rd: Address, data: Address, ipa: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, data) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegableDram(old_s, data) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1574,7 +1577,8 @@
+     ==> RttWalk(new_s, RealmAt(new_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.sh == RttWalk(old_s, RealmAt(old_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.sh)
+   && (RttWalk(new_s, RealmAt(new_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas)
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rmi_data_destroy_spec(rd: Address, ipa: Address, result: Result<(), RmiStatusCode>, data: Address, top: Address, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1607,6 +1611,7 @@
+   && (!(result.is_Ok() && (RttWalk(old_s, RealmAt(old_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == RAM)) ==> RttWalk(new_s, RealmAt(new_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_dev_mem_map_spec(rd: Address, ipa: Address, level: Int64, addr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, addr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegableDevMem(old_s, addr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1655,6 +1660,7 @@
+   && (RttWalk(new_s, RealmAt(new_s, rd), ipa,level as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa,level as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_dev_mem_unmap_spec(rd: Address, ipa: Address, level: Int64, result: Result<(), RmiStatusCode>, pa: Address, top: Address, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1687,10 +1693,12 @@
+   && (!(result.is_Ok() && (RttWalk(old_s, RealmAt(old_s, rd), ipa, level as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == DEV)) ==> RttWalk(new_s, RealmAt(new_s, rd), ipa, level as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa, level as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_features_spec(index: UInt64, result: Result<(), RmiStatusCode>, value: Bits64, old_s: S, new_s: S) -> bool {
+   (result.is_Ok() ==> value == RmiFeatureRegisterEncode(new_s, index as int))
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_granule_delegate_spec(addr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, addr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, addr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1706,7 +1714,8 @@
+   && (result.is_Err()
+     ==> GranuleAt(new_s, addr).gpt == GranuleAt(old_s, addr).gpt)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rmi_granule_undelegate_spec(addr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, addr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, addr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1721,7 +1730,8 @@
+   && (result.is_Err()
+     ==> GranuleAt(new_s, addr).state == GranuleAt(old_s, addr).state)
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rmi_mec_set_private_spec(mecid: Bits64, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   ((mecid) > (ImplFeatures(old_s).max_mecid) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (MecState(old_s, mecid) != MEC_STATE_SHARED ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1735,6 +1745,7 @@
+     ==> MecState(new_s, mecid) == MecState(old_s, mecid))
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_mec_set_shared_spec(mecid: Bits64, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   ((mecid) > (ImplFeatures(old_s).max_mecid) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (MecState(old_s, mecid) != MEC_STATE_PRIVATE_UNASSIGNED ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1746,6 +1757,7 @@
+     ==> MecState(new_s, mecid) == MecState(old_s, mecid))
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_pdev_abort_spec(pdev_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, pdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1764,6 +1776,7 @@
+     ==> PdevAt(new_s, pdev_ptr).comm_state == PdevAt(old_s, pdev_ptr).comm_state)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_pdev_aux_count_spec(flags: Bits64, result: Result<(), RmiStatusCode>, aux_count: UInt64, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (result.is_Ok() ==> aux_count == PdevAuxCount(new_s, RmiPdevFlagsDecode(new_s, flags)))
+@@ -1771,6 +1784,7 @@
+     ==> result.is_Ok())
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_pdev_communicate_spec(pdev_ptr: Address, data_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, pdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1822,7 +1836,8 @@
+   && (result.is_Err()
+     ==> PdevAt(new_s, pdev_ptr).state == PdevAt(old_s, pdev_ptr).state)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rmi_pdev_create_spec(pdev_ptr: Address, params_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, pdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1899,7 +1914,8 @@
+   && (result.is_Err()
+     ==> PdevAt(new_s, pdev_ptr).num_aux == PdevAt(old_s, pdev_ptr).num_aux)
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rmi_pdev_destroy_spec(pdev_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, pdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1919,7 +1935,8 @@
+   && (result.is_Err()
+     ==> GranuleAt(new_s, pdev_ptr).state == GranuleAt(old_s, pdev_ptr).state)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rmi_pdev_get_state_spec(pdev_ptr: Address, result: Result<(), RmiStatusCode>, state: RmiPdevState, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, pdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1932,7 +1949,8 @@
+        !(GranuleAt(old_s, pdev_ptr).state != PDEV))
+     ==> result.is_Ok())
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rmi_pdev_ide_reset_spec(pdev_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, pdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1953,6 +1971,7 @@
+     ==> PdevAt(new_s, pdev_ptr).comm_state == PdevAt(old_s, pdev_ptr).comm_state)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_pdev_notify_spec(pdev_ptr: Address, ev: RmiPdevEvent, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, pdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -1974,7 +1993,8 @@
+   && (result.is_Err()
+     ==> PdevAt(new_s, pdev_ptr).comm_state == PdevAt(old_s, pdev_ptr).comm_state)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rmi_pdev_set_pubkey_spec(pdev_ptr: Address, params_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, pdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2006,7 +2026,8 @@
+   && (result.is_Err()
+     ==> PdevAt(new_s, pdev_ptr).comm_state == PdevAt(old_s, pdev_ptr).comm_state)
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rmi_pdev_stop_spec(pdev_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, pdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2029,6 +2050,7 @@
+     ==> PdevAt(new_s, pdev_ptr).comm_state == PdevAt(old_s, pdev_ptr).comm_state)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_psci_complete_spec(calling_rec_ptr: Address, target_rec_ptr: Address, status: PsciReturnCode, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (calling_rec_ptr == target_rec_ptr ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!AddrIsGranuleAligned(old_s, calling_rec_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2072,12 +2094,14 @@
+     ==> RecAt(new_s, calling_rec_ptr).gprs[0] == RecAt(old_s, calling_rec_ptr).gprs[0])
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_psmmu_irq_notify_spec(psmmu: Address, irq: RmiSmmuIrq, result: Result<(), RmiStatusCode>, action: RmiSmmuAction, rd: Address, vsmmu: Address, msi_addr: Address, msi_data: Bits64, old_s: S, new_s: S) -> bool {
+   (!PsmmuAddrIsValid(old_s, psmmu) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && ((PsmmuAddrIsValid(old_s, psmmu))
+     ==> result.is_Ok())
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rmi_psmmu_msi_config_spec(psmmu: Address, gerr_addr: Address, gerr_data: Bits64, eventq_addr: Address, eventq_data: Bits64, priq_addr: Address, priq_data: Bits64, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!PsmmuAddrIsValid(old_s, psmmu) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PsmmuSupportsMsi(old_s, psmmu) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2097,7 +2121,8 @@
+        MsiAddrIsValid(old_s, priq_addr))
+     ==> result.is_Ok())
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rmi_realm_activate_spec(rd: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2112,7 +2137,8 @@
+   && (result.is_Err()
+     ==> RealmAt(new_s, rd).state == RealmAt(old_s, rd).state)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rmi_realm_create_spec(rd: Address, params_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, params_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!GranuleAccessPermitted(old_s, params_ptr, PAS_NS) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2206,7 +2232,8 @@
+     ==> RealmAt(new_s, rd).vdev_count == RealmAt(old_s, rd).vdev_count)
+   && (!(result.is_Ok() && (MecState(old_s, RmiRealmParamsAt(old_s, params_ptr).mecid) == MEC_STATE_PRIVATE_UNASSIGNED)) ==> MecState(new_s, RmiRealmParamsAt(new_s, params_ptr).mecid) == MecState(old_s, RmiRealmParamsAt(old_s, params_ptr).mecid))
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rmi_realm_destroy_spec(rd: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2231,6 +2258,7 @@
+   && (!(result.is_Ok() && (RealmAt(old_s, rd).mec_policy == MEC_POLICY_PRIVATE)) ==> MecState(new_s, RealmAt(new_s, rd).mecid) == MecState(old_s, RealmAt(old_s, rd).mecid))
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rec_aux_count_spec(rd: Address, result: Result<(), RmiStatusCode>, aux_count: UInt64, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2242,6 +2270,7 @@
+     ==> result.is_Ok())
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rec_create_spec(rd: Address, rec_ptr: Address, params_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, params_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!GranuleAccessPermitted(old_s, params_ptr, PAS_NS) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2323,6 +2352,7 @@
+   && (!(result.is_Ok() && (RmiRecParamsAt(old_s, params_ptr).flags.runnable == RMI_RUNNABLE)) ==> RecAt(new_s, rec_ptr).flags.runnable == RecAt(old_s, rec_ptr).flags.runnable)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rec_destroy_spec(rec_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rec_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rec_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2341,7 +2371,8 @@
+   && (result.is_Err()
+     ==> RealmAt(new_s, RecAt(new_s, rec_ptr).owner).num_recs == RealmAt(old_s, RecAt(old_s, rec_ptr).owner).num_recs)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rmi_rec_enter_spec(rec_ptr: Address, run_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, run_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!GranuleAccessPermitted(old_s, run_ptr, PAS_NS) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2371,7 +2402,8 @@
+        !(RecAt(old_s, rec_ptr).pending != REC_PENDING_NONE))
+     ==> result.is_Ok())
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rmi_rtt_aux_create_spec(rd: Address, rtt: Address, ipa: Address, level: Int64, index: UInt64, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2415,6 +2447,7 @@
+   && (RttWalk(new_s, RealmAt(new_s, rd), ipa,level - 1 as int,index as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa,level - 1 as int,index as int).rtte.ripas)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_aux_destroy_spec(rd: Address, ipa: Address, level: Int64, index: UInt64, result: Result<(), RmiStatusCode>, rtt: Address, top: Address, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2450,6 +2483,7 @@
+     ==> GranuleAt(new_s, RttWalk(new_s, RealmAt(new_s, rd), ipa,level - 1 as int,index as int).rtte.addr).state == GranuleAt(old_s, RttWalk(old_s, RealmAt(old_s, rd), ipa,level - 1 as int,index as int).rtte.addr).state)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_aux_fold_spec(rd: Address, ipa: Address, level: Int64, index: UInt64, result: Result<(), RmiStatusCode>, rtt: Address, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2489,6 +2523,7 @@
+     ==> GranuleAt(new_s, RttWalk(new_s, RealmAt(new_s, rd), ipa,level - 1 as int,index as int).rtte.addr).state == GranuleAt(old_s, RttWalk(old_s, RealmAt(old_s, rd), ipa,level - 1 as int,index as int).rtte.addr).state)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_aux_map_protected_spec(rd: Address, ipa: Address, index: UInt64, result: Result<(), RmiStatusCode>, fail_index: UInt64, level_pri: Int64, state: RmiRttEntryState, ripas: RmiRipas, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2528,6 +2563,7 @@
+   && (RttWalk(new_s, RealmAt(new_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,index as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,index as int).rtte.ripas)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_aux_map_unprotected_spec(rd: Address, ipa: Address, index: UInt64, result: Result<(), RmiStatusCode>, fail_index: UInt64, level_pri: Int64, state: RmiRttEntryState, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2557,6 +2593,7 @@
+   && (RttWalk(new_s, RealmAt(new_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,index as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,index as int).rtte.ripas)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_aux_unmap_protected_spec(rd: Address, ipa: Address, index: UInt64, result: Result<(), RmiStatusCode>, top: Address, level: Int64, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2581,6 +2618,7 @@
+   && (RttWalk(new_s, RealmAt(new_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,index as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,index as int).rtte.ripas)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_aux_unmap_unprotected_spec(rd: Address, ipa: Address, index: UInt64, result: Result<(), RmiStatusCode>, top: Address, level: Int64, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2605,6 +2643,7 @@
+   && (RttWalk(new_s, RealmAt(new_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,index as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,index as int).rtte.ripas)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_create_spec(rd: Address, rtt: Address, ipa: Address, level: Int64, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2646,6 +2685,7 @@
+   && (RttWalk(new_s, RealmAt(new_s, rd), ipa,level - 1 as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa,level - 1 as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_destroy_spec(rd: Address, ipa: Address, level: Int64, result: Result<(), RmiStatusCode>, rtt: Address, top: Address, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2682,6 +2722,7 @@
+     ==> GranuleAt(new_s, RttWalk(new_s, RealmAt(new_s, rd), ipa,level - 1 as int,RMM_RTT_TREE_PRIMARY as int).rtte.addr).state == GranuleAt(old_s, RttWalk(old_s, RealmAt(old_s, rd), ipa,level - 1 as int,RMM_RTT_TREE_PRIMARY as int).rtte.addr).state)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_dev_mem_validate_spec(rd: Address, rec_ptr: Address, base: Address, top: Address, result: Result<(), RmiStatusCode>, out_top: Address, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2734,6 +2775,7 @@
+     ==> RecAt(new_s, rec_ptr).dev_mem_pa == RecAt(old_s, rec_ptr).dev_mem_pa)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_fold_spec(rd: Address, ipa: Address, level: Int64, result: Result<(), RmiStatusCode>, rtt: Address, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2771,6 +2813,7 @@
+     ==> GranuleAt(new_s, RttWalk(new_s, RealmAt(new_s, rd), ipa,level - 1 as int,RMM_RTT_TREE_PRIMARY as int).rtte.addr).state == GranuleAt(old_s, RttWalk(old_s, RealmAt(old_s, rd), ipa,level - 1 as int,RMM_RTT_TREE_PRIMARY as int).rtte.addr).state)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_init_ripas_spec(rd: Address, base: Address, top: Address, result: Result<(), RmiStatusCode>, out_top: Address, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2800,6 +2843,7 @@
+     ==> RealmAt(new_s, rd).measurements[0] == RealmAt(old_s, rd).measurements[0])
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_map_unprotected_spec(rd: Address, ipa: Address, level: Int64, desc: Bits64, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!RttDescriptorIsValidForUnprotected(old_s, desc) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2838,6 +2882,7 @@
+   && (RttWalk(new_s, RealmAt(new_s, rd), ipa, level as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa, level as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_read_entry_spec(rd: Address, ipa: Address, level: Int64, result: Result<(), RmiStatusCode>, walk_level: UInt64, state: RmiRttEntryState, desc: Bits64, ripas: RmiRipas, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2863,6 +2908,7 @@
+     ==> result.is_Ok())
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_set_ripas_spec(rd: Address, rec_ptr: Address, base: Address, top: Address, result: Result<(), RmiStatusCode>, out_top: Address, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2902,6 +2948,7 @@
+     ==> RecAt(new_s, rec_ptr).ripas_addr == RecAt(old_s, rec_ptr).ripas_addr)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_set_s2ap_spec(rd: Address, rec_ptr: Address, base: Address, top: Address, result: Result<(), RmiStatusCode>, out_top: Address, rtt_tree: UInt64, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2937,6 +2984,7 @@
+     ==> RecAt(new_s, rec_ptr).s2ap_addr == RecAt(old_s, rec_ptr).s2ap_addr)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_rtt_unmap_unprotected_spec(rd: Address, ipa: Address, level: Int64, result: Result<(), RmiStatusCode>, top: Address, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2962,6 +3010,7 @@
+   && (RttWalk(new_s, RealmAt(new_s, rd), ipa, level as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa, level as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_vdev_abort_spec(vdev_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, vdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -2982,6 +3031,7 @@
+     ==> VdevAt(new_s, vdev_ptr).comm_state == VdevAt(old_s, vdev_ptr).comm_state)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_vdev_aux_count_spec(pdev_flags: Bits64, vdev_flags: Bits64, result: Result<(), RmiStatusCode>, aux_count: UInt64, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (result.is_Ok() ==> aux_count == VdevAuxCount(new_s,  RmiPdevFlagsDecode(new_s, pdev_flags), RmiVdevFlagsDecode(new_s, vdev_flags)))
+@@ -2989,6 +3039,7 @@
+     ==> result.is_Ok())
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_vdev_communicate_spec(pdev_ptr: Address, vdev_ptr: Address, data_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, pdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -3037,6 +3088,7 @@
+     ==> VdevAt(new_s, vdev_ptr).state == VdevAt(old_s, vdev_ptr).state)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_vdev_complete_spec(rec_ptr: Address, vdev_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, rec_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+   && (!PaIsDelegable(old_s, rec_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -3064,6 +3116,7 @@
+     ==> RecAt(new_s, rec_ptr).pending == RecAt(old_s, rec_ptr).pending)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_vdev_create_spec(rd: Address, pdev_ptr: Address, vdev_ptr: Address, params_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -3107,7 +3160,7 @@
+   && (result.is_Ok() ==> AuxStateEqual32(new_s, VdevAt(new_s, vdev_ptr).aux, VdevAuxCount(new_s, PdevFlags(new_s, PdevAt(new_s, pdev_ptr)),RmiVdevParamsAt(new_s, params_ptr).flags) as int, VDEV_AUX))
+   && (result.is_Ok() ==> !TdiIdIsFree(new_s, RmiVdevParamsAt(new_s, params_ptr).tdi_id, PdevAt(new_s, pdev_ptr).segment_id))
+   && (result.is_Ok() ==> VdevAt(new_s, vdev_ptr).inst_id == RealmAt(new_s, rd).vdev_count)
+-  && (result.is_Ok() ==> (VdevAt(new_s, vdev_ptr).vsmmu,[EXCLUDED] RmiVdevParamsAt(new_s, params_ptr).flags.VSMMU))
++  && (result.is_Ok() ==> Equal(VdevAt(new_s, vdev_ptr).vsmmu, RmiVdevParamsAt(new_s, params_ptr).flags.VSMMU))
+   && (result.is_Ok() && RmiVdevParamsAt(old_s, params_ptr).flags.VSMMU == RMI_FEATURE_TRUE ==> VdevAt(new_s, vdev_ptr).vsmmu_addr == RmiVdevParamsAt(new_s, params_ptr).vsmmu_addr)
+   && (result.is_Ok() && RmiVdevParamsAt(old_s, params_ptr).flags.VSMMU == RMI_FEATURE_TRUE ==> VdevAt(new_s, vdev_ptr).vsid == RmiVdevParamsAt(new_s, params_ptr).vsid)
+   && (result.is_Ok() && RmiVdevParamsAt(old_s, params_ptr).flags.VSMMU == RMI_FEATURE_TRUE ==> !VsidIsFree(new_s,  VsmmuAt(new_s, RmiVdevParamsAt(new_s, params_ptr).vsmmu_addr),RmiVdevParamsAt(new_s, params_ptr).vsid))
+@@ -3177,6 +3230,7 @@
+   && (!(result.is_Ok() && (RmiVdevParamsAt(old_s, params_ptr).flags.VSMMU == RMI_FEATURE_TRUE)) ==> VdevAt(new_s, vdev_ptr).vsmmu_addr == VdevAt(old_s, vdev_ptr).vsmmu_addr)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_vdev_destroy_spec(rd: Address, pdev_ptr: Address, vdev_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -3218,7 +3272,8 @@
+   && (result.is_Err()
+     ==> PdevAt(new_s, pdev_ptr).num_vdevs == PdevAt(old_s, pdev_ptr).num_vdevs)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rmi_vdev_get_state_spec(vdev_ptr: Address, result: Result<(), RmiStatusCode>, state: RmiVdevState, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, vdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -3231,7 +3286,8 @@
+        !(GranuleAt(old_s, vdev_ptr).state != VDEV))
+     ==> result.is_Ok())
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rmi_vdev_stop_spec(vdev_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, vdev_ptr) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -3252,6 +3308,7 @@
+     ==> VdevAt(new_s, vdev_ptr).comm_state == VdevAt(old_s, vdev_ptr).comm_state)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_version_spec(req: RmiInterfaceVersion, result: Result<(), RmiStatusCode>, lower: RmiInterfaceVersion, higher: RmiInterfaceVersion, old_s: S, new_s: S) -> bool {
+   ((!RmiVersionIsSupported(old_s, req) && RmiVersionLowerIsSupported(old_s, req)) ==> (ResultEqual(result, RMI_ERROR_INPUT)  && VersionEqualRmi(lower, RmiVersionHighestBelow(new_s, req))  && VersionEqualRmi(higher, RmiVersionHighest(new_s))))
+   && ((!RmiVersionIsSupported(old_s, req) && !RmiVersionLowerIsSupported(old_s, req) && RmiVersionHigherIsSupported(old_s, req)) ==> (ResultEqual(result, RMI_ERROR_INPUT)  && VersionEqualRmi(lower, higher)  && VersionEqualRmi(higher, RmiVersionHighest(new_s))))
+@@ -3262,6 +3319,7 @@
+     ==> result.is_Ok())
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_vsmmu_create_spec(rd: Address, vsmmu_ptr: Address, params_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -3308,6 +3366,7 @@
+     ==> VsmmuAt(new_s, vsmmu_ptr).aidr == VsmmuAt(old_s, vsmmu_ptr).aidr)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_vsmmu_destroy_spec(rd: Address, vsmmu_ptr: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -3331,6 +3390,7 @@
+     ==> GranuleAt(new_s, vsmmu_ptr).state == GranuleAt(old_s, vsmmu_ptr).state)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_vsmmu_map_spec(rd: Address, vsmmu_ptr: Address, ipa: Address, result: Result<(), RmiStatusCode>, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -3368,6 +3428,7 @@
+   && (RttWalk(new_s, RealmAt(new_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rmi_vsmmu_unmap_spec(rd: Address, ipa: Address, result: Result<(), RmiStatusCode>, vsmmu: Address, top: Address, old_s: S, new_s: S) -> bool {
+   (ImplFeatures(old_s).feat_da != FEATURE_TRUE ==> ResultEqual(result, RMI_ERROR_NOT_SUPPORTED))
+   && (!AddrIsGranuleAligned(old_s, rd) ==> ResultEqual(result, RMI_ERROR_INPUT))
+@@ -3398,7 +3459,8 @@
+     ==> RttWalk(new_s, RealmAt(new_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas)
+   && (!(result.is_Ok() && (RttWalk(old_s, RealmAt(old_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == DEV)) ==> RttWalk(new_s, RealmAt(new_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == RttWalk(old_s, RealmAt(old_s, rd), ipa,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rsi_attestation_token_continue_spec(addr: Address, offset: UInt64, size: UInt64, result: RsiCommandReturnCode, len: UInt64, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, addr) ==> result == RSI_ERROR_INPUT)
+   && (!AddrIsProtected(old_s, addr, CurrentRealm(old_s)) ==> result == RSI_ERROR_INPUT)
+@@ -3422,7 +3484,8 @@
+   && (result != RSI_SUCCESS
+     ==> CurrentRec(new_s).attest_state == CurrentRec(old_s).attest_state)
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rsi_attestation_token_init_spec(challenge_0: Bits64, challenge_1: Bits64, challenge_2: Bits64, challenge_3: Bits64, challenge_4: Bits64, challenge_5: Bits64, challenge_6: Bits64, challenge_7: Bits64, result: RsiCommandReturnCode, size: UInt64, old_s: S, new_s: S) -> bool {
+   (result == RSI_SUCCESS ==> CurrentRec(new_s).attest_state == ATTEST_IN_PROGRESS)
+   && (result == RSI_SUCCESS ==> CurrentRec(new_s).attest_challenge == [challenge_0,challenge_1,challenge_2,challenge_3,challenge_4,challenge_5,challenge_6,challenge_7 ])
+@@ -3432,10 +3495,12 @@
+     ==> CurrentRec(new_s).attest_challenge == CurrentRec(old_s).attest_challenge)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rsi_features_spec(index: UInt64, result: RsiCommandReturnCode, value: Bits64, old_s: S, new_s: S) -> bool {
+   (result == RSI_SUCCESS ==> value == RsiFeatureRegisterEncode(new_s, CurrentRealm(new_s), index as int))
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rsi_host_call_spec(addr: Address, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   (!AddrIsAligned(old_s, addr, 256) ==> result == RSI_ERROR_INPUT)
+   && (!AddrIsProtected(old_s, addr, CurrentRealm(old_s)) ==> result == RSI_ERROR_INPUT)
+@@ -3446,6 +3511,7 @@
+     ==> result == RSI_SUCCESS)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rsi_ipa_state_get_spec(base: Address, top: Address, result: RsiCommandReturnCode, out_top: Address, ripas: RsiRipas, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, base) ==> result == RSI_ERROR_INPUT)
+   && (!AddrIsGranuleAligned(old_s, top) ==> result == RSI_ERROR_INPUT)
+@@ -3458,6 +3524,7 @@
+     ==> result == RSI_SUCCESS)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rsi_ipa_state_set_spec(base: Address, top: Address, ripas: RsiRipas, flags: RsiRipasChangeFlags, result: RsiCommandReturnCode, new_base: Address, response: RsiResponse, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, base) ==> result == RSI_ERROR_INPUT)
+   && (!AddrIsGranuleAligned(old_s, top) ==> result == RSI_ERROR_INPUT)
+@@ -3473,7 +3540,8 @@
+        !((ripas != RSI_EMPTY) && (ripas != RSI_RAM)))
+     ==> result == RSI_SUCCESS)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rsi_measurement_extend_spec(index: UInt64, size: UInt64, value_0: Bits64, value_1: Bits64, value_2: Bits64, value_3: Bits64, value_4: Bits64, value_5: Bits64, value_6: Bits64, value_7: Bits64, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   (index < 1 || index > 4 ==> result == RSI_ERROR_INPUT)
+   && (size > 64 ==> result == RSI_ERROR_INPUT)
+@@ -3485,13 +3553,15 @@
+   && (result != RSI_SUCCESS
+     ==> CurrentRealm(new_s).measurements[index] == CurrentRealm(old_s).measurements[index])
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rsi_measurement_read_spec(index: UInt64, result: RsiCommandReturnCode, value_0: Bits64, value_1: Bits64, value_2: Bits64, value_3: Bits64, value_4: Bits64, value_5: Bits64, value_6: Bits64, value_7: Bits64, old_s: S, new_s: S) -> bool {
+   (index > 4 ==> result == RSI_ERROR_INPUT)
+   && ((!(index > 4))
+     ==> result == RSI_SUCCESS)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rsi_mem_get_perm_value_spec(plane_index: UInt64, perm_index: UInt64, result: RsiCommandReturnCode, value: Bits64, old_s: S, new_s: S) -> bool {
+   (plane_index > CurrentRealm(old_s).num_aux_planes ==> result == RSI_ERROR_INPUT)
+   && (perm_index >= RMM_NUM_PERM_OVERLAY_INDICES ==> result == RSI_ERROR_INPUT)
+@@ -3500,7 +3570,8 @@
+        !(perm_index >= RMM_NUM_PERM_OVERLAY_INDICES))
+     ==> result == RSI_SUCCESS)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rsi_mem_set_perm_index_spec(base: Address, top: Address, perm_index: UInt64, cookie: Bits64, result: RsiCommandReturnCode, new_base: Address, response: RsiResponse, new_cookie: Bits64, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, base) ==> result == RSI_ERROR_INPUT)
+   && (!AddrIsGranuleAligned(old_s, top) ==> result == RSI_ERROR_INPUT)
+@@ -3521,7 +3592,8 @@
+   && (result != RSI_SUCCESS
+     ==> CurrentRealm(new_s).overlay_locked[perm_index as int] == CurrentRealm(old_s).overlay_locked[perm_index as int])
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rsi_mem_set_perm_value_spec(plane_index: UInt64, perm_index: UInt64, value: Bits64, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   ((plane_index == 0 || plane_index > CurrentRealm(old_s).num_aux_planes) ==> result == RSI_ERROR_INPUT)
+   && (perm_index >= RMM_NUM_PERM_OVERLAY_INDICES ==> result == RSI_ERROR_INPUT)
+@@ -3536,7 +3608,8 @@
+   && (result != RSI_SUCCESS
+     ==> CurrentRealm(new_s).overlay_perms[plane_index as int].values[perm_index as int] == CurrentRealm(old_s).overlay_perms[plane_index as int].values[perm_index as int])
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rsi_plane_enter_spec(plane_idx: UInt64, run_ptr: Address, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   ((plane_idx == 0 || plane_idx > CurrentRealm(old_s).num_aux_planes) ==> result == RSI_ERROR_INPUT)
+   && (!AddrIsGranuleAligned(old_s, run_ptr) ==> result == RSI_ERROR_INPUT)
+@@ -3549,7 +3622,8 @@
+        !(RttWalk(old_s, CurrentRealm(old_s), run_ptr,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == EMPTY))
+     ==> result == RSI_SUCCESS)
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rsi_plane_reg_read_spec(plane_idx: UInt64, encoding: Bits64, result: RsiCommandReturnCode, value: Bits64, old_s: S, new_s: S) -> bool {
+   (plane_idx > CurrentRealm(old_s).num_aux_planes ==> result == RSI_ERROR_INPUT)
+   && (!PlaneRegIsValid(old_s, CurrentRealm(old_s), encoding) ==> result == RSI_ERROR_INPUT)
+@@ -3559,6 +3633,7 @@
+     ==> result == RSI_SUCCESS)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rsi_plane_reg_write_spec(plane_idx: UInt64, encoding: Bits64, value: Bits64, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   (plane_idx > CurrentRealm(old_s).num_aux_planes ==> result == RSI_ERROR_INPUT)
+   && (!PlaneRegIsValid(old_s, CurrentRealm(old_s), encoding) ==> result == RSI_ERROR_INPUT)
+@@ -3570,6 +3645,7 @@
+     ==> PlaneRegValue(new_s, CurrentRealm(new_s), plane_idx as int, encoding) == PlaneRegValue(old_s, CurrentRealm(old_s), plane_idx as int, encoding))
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rsi_rdev_continue_spec(vdev_id: Bits64, inst_id: UInt64, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   (CurrentRealm(old_s).feat_da != FEATURE_TRUE ==> result == RSI_ERROR_STATE)
+   && (!RdevIdsAreValid(old_s, CurrentRealm(old_s), vdev_id, inst_id as int) ==> result == RSI_ERROR_INPUT)
+@@ -3600,7 +3676,8 @@
+   && (result != RSI_SUCCESS
+     ==> RdevFromInstId(new_s, CurrentRealm(new_s),inst_id as int).state == RdevFromInstId(old_s, CurrentRealm(old_s),inst_id as int).state)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rsi_rdev_get_info_spec(vdev_id: Bits64, inst_id: UInt64, addr: Address, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   (CurrentRealm(old_s).feat_da != FEATURE_TRUE ==> result == RSI_ERROR_STATE)
+   && (!RdevIdsAreValid(old_s, CurrentRealm(old_s), vdev_id, inst_id as int) ==> result == RSI_ERROR_INPUT)
+@@ -3615,7 +3692,8 @@
+        !(RttWalk(old_s, CurrentRealm(old_s), addr,RMM_RTT_PAGE_LEVEL as int,RMM_RTT_TREE_PRIMARY as int).rtte.ripas == EMPTY))
+     ==> result == RSI_SUCCESS)
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rsi_rdev_get_instance_id_spec(vdev_id: Bits64, result: RsiCommandReturnCode, inst_id: UInt64, old_s: S, new_s: S) -> bool {
+   (CurrentRealm(old_s).feat_da != FEATURE_TRUE ==> result == RSI_ERROR_STATE)
+   && (!RdevIdIsValid(old_s, CurrentRealm(old_s), vdev_id) ==> result == RSI_ERROR_INPUT)
+@@ -3624,7 +3702,8 @@
+        RdevIdIsValid(old_s, CurrentRealm(old_s), vdev_id))
+     ==> result == RSI_SUCCESS)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rsi_rdev_get_interface_report_spec(vdev_id: Bits64, inst_id: UInt64, version_max: UInt64, result: RsiCommandReturnCode, version: UInt64, old_s: S, new_s: S) -> bool {
+   (CurrentRealm(old_s).feat_da != FEATURE_TRUE ==> result == RSI_ERROR_STATE)
+   && (!RdevIdsAreValid(old_s, CurrentRealm(old_s), vdev_id, inst_id as int) ==> result == RSI_ERROR_INPUT)
+@@ -3646,7 +3725,8 @@
+     ==> RdevFromInstId(new_s, CurrentRealm(new_s),inst_id as int).operation == RdevFromInstId(old_s, CurrentRealm(old_s),inst_id as int).operation)
+   && (!(result == RSI_SUCCESS && (RdevFromInstId(old_s, CurrentRealm(old_s),inst_id as int).state == RDEV_LOCKED)) ==> RdevFromInstId(new_s, CurrentRealm(new_s),inst_id as int).state == RdevFromInstId(old_s, CurrentRealm(old_s),inst_id as int).state)
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rsi_rdev_get_measurements_spec(vdev_id: Bits64, inst_id: UInt64, op: Bits64, flags: Bits64, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   (CurrentRealm(old_s).feat_da != FEATURE_TRUE ==> result == RSI_ERROR_STATE)
+   && (!RdevIdsAreValid(old_s, CurrentRealm(old_s), vdev_id, inst_id as int) ==> result == RSI_ERROR_INPUT)
+@@ -3669,7 +3749,8 @@
+     ==> RdevFromInstId(new_s, CurrentRealm(new_s),inst_id as int).operation == RdevFromInstId(old_s, CurrentRealm(old_s),inst_id as int).operation)
+   && (!(result == RSI_SUCCESS && (RdevFromInstId(old_s, CurrentRealm(old_s),inst_id as int).state == RDEV_UNLOCKED)) ==> RdevFromInstId(new_s, CurrentRealm(new_s),inst_id as int).state == RdevFromInstId(old_s, CurrentRealm(old_s),inst_id as int).state)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rsi_rdev_get_state_spec(vdev_id: Bits64, inst_id: UInt64, result: RsiCommandReturnCode, state: RsiDeviceState, old_s: S, new_s: S) -> bool {
+   (CurrentRealm(old_s).feat_da != FEATURE_TRUE ==> result == RSI_ERROR_STATE)
+   && (!RdevIdsAreValid(old_s, CurrentRealm(old_s), vdev_id, inst_id as int) ==> result == RSI_ERROR_INPUT)
+@@ -3678,7 +3759,8 @@
+        RdevIdsAreValid(old_s, CurrentRealm(old_s), vdev_id, inst_id as int))
+     ==> result == RSI_SUCCESS)
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rsi_rdev_lock_spec(vdev_id: Bits64, inst_id: UInt64, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   (CurrentRealm(old_s).feat_da != FEATURE_TRUE ==> result == RSI_ERROR_STATE)
+   && (!RdevIdsAreValid(old_s, CurrentRealm(old_s), vdev_id, inst_id as int) ==> result == RSI_ERROR_INPUT)
+@@ -3695,6 +3777,7 @@
+     ==> RdevFromInstId(new_s, CurrentRealm(new_s),inst_id as int).operation == RdevFromInstId(old_s, CurrentRealm(old_s),inst_id as int).operation)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rsi_rdev_start_spec(vdev_id: Bits64, inst_id: UInt64, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   (CurrentRealm(old_s).feat_da != FEATURE_TRUE ==> result == RSI_ERROR_STATE)
+   && (!RdevIdsAreValid(old_s, CurrentRealm(old_s), vdev_id, inst_id as int) ==> result == RSI_ERROR_INPUT)
+@@ -3711,6 +3794,7 @@
+     ==> RdevFromInstId(new_s, CurrentRealm(new_s),inst_id as int).operation == RdevFromInstId(old_s, CurrentRealm(old_s),inst_id as int).operation)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rsi_rdev_stop_spec(vdev_id: Bits64, inst_id: UInt64, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   (CurrentRealm(old_s).feat_da != FEATURE_TRUE ==> result == RSI_ERROR_STATE)
+   && (!RdevIdsAreValid(old_s, CurrentRealm(old_s), vdev_id, inst_id as int) ==> result == RSI_ERROR_INPUT)
+@@ -3724,6 +3808,7 @@
+     ==> RdevFromInstId(new_s, CurrentRealm(new_s),inst_id as int).state == RdevFromInstId(old_s, CurrentRealm(old_s),inst_id as int).state)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rsi_rdev_validate_mapping_spec(vdev_id: Bits64, inst_id: UInt64, ipa_base: Address, ipa_top: Address, pa_base: Address, flags: RsiDevMemFlags, result: RsiCommandReturnCode, new_ipa_base: Address, response: RsiResponse, old_s: S, new_s: S) -> bool {
+   (CurrentRealm(old_s).feat_da != FEATURE_TRUE ==> result == RSI_ERROR_STATE)
+   && (!RdevIdsAreValid(old_s, CurrentRealm(old_s), vdev_id, inst_id as int) ==> result == RSI_ERROR_INPUT)
+@@ -3745,7 +3830,8 @@
+        AddrRangeIsProtected(old_s, ipa_base, ipa_top, CurrentRealm(old_s)))
+     ==> result == RSI_SUCCESS)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn rsi_realm_config_spec(addr: Address, result: RsiCommandReturnCode, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, addr) ==> result == RSI_ERROR_INPUT)
+   && (!AddrIsProtected(old_s, addr, CurrentRealm(old_s)) ==> result == RSI_ERROR_INPUT)
+@@ -3762,7 +3848,8 @@
+   && (result != RSI_SUCCESS
+     ==> RsiRealmConfigAt(new_s, addr).num_aux_planes == RsiRealmConfigAt(old_s, addr).num_aux_planes)
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn rsi_version_spec(req: RsiInterfaceVersion, result: RsiCommandReturnCode, lower: RsiInterfaceVersion, higher: RsiInterfaceVersion, old_s: S, new_s: S) -> bool {
+   ((!RsiVersionIsSupported(old_s, req) && RsiVersionLowerIsSupported(old_s, req)) ==> (result == RSI_ERROR_INPUT && VersionEqualRsi(lower, RsiVersionHighestBelow(new_s, req)) && VersionEqualRsi(higher, RsiVersionHighest(new_s))))
+   && ((!RsiVersionIsSupported(old_s, req) && !RsiVersionLowerIsSupported(old_s, req) && RsiVersionHigherIsSupported(old_s, req)) ==> (result == RSI_ERROR_INPUT && VersionEqualRsi(lower, higher) && VersionEqualRsi(higher, RsiVersionHighest(new_s))))
+@@ -3773,6 +3860,7 @@
+     ==> result == RSI_SUCCESS)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rsi_vsmmu_activate_spec(base: Address, top: Address, result: RsiCommandReturnCode, new_base: Address, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, base) ==> result == RSI_ERROR_INPUT)
+   && (!AddrIsGranuleAligned(old_s, top) ==> result == RSI_ERROR_INPUT)
+@@ -3785,6 +3873,7 @@
+     ==> result == RSI_SUCCESS)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn rsi_vsmmu_get_info_spec(addr: Address, result: RsiCommandReturnCode, top: Address, old_s: S, new_s: S) -> bool {
+   (!AddrIsGranuleAligned(old_s, addr) ==> result == RSI_ERROR_INPUT)
+   && (!AddrIsProtected(old_s, addr, CurrentRealm(old_s)) ==> result == RSI_ERROR_INPUT)
+@@ -3798,6 +3887,7 @@
+     ==> result == RSI_SUCCESS)
+ }
+ 
++// XXX: COVERED
+ pub open spec fn psci_affinity_info_spec(target_affinity: Bits64, lowest_affinity_level: UInt32, result: PsciReturnCode, old_s: S, new_s: S) -> bool {
+   (lowest_affinity_level != 0 ==> result == PSCI_INVALID_PARAMETERS)
+   && (!MpidrIsUsed(old_s, target_affinity) ==> result == PSCI_INVALID_PARAMETERS)
+@@ -3807,11 +3897,13 @@
+        MpidrIsUsed(old_s, target_affinity))
+     ==> result == PSCI_SUCCESS)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn psci_cpu_off_spec(old_s: S, new_s: S) -> bool {
+   true[EXCLUDED]
+ }
+-
++*/
++// XXX: COVERED
+ pub open spec fn psci_cpu_on_spec(target_cpu: Bits64, entry_point_address: Address, context_id: UInt32, result: PsciReturnCode, old_s: S, new_s: S) -> bool {
+   (!AddrIsProtected(old_s, entry_point_address, CurrentRealm(old_s)) ==> result == PSCI_INVALID_ADDRESS)
+   && (!MpidrIsUsed(old_s, target_cpu) ==> result == PSCI_INVALID_PARAMETERS)
+@@ -3827,30 +3919,37 @@
+   && (result != PSCI_SUCCESS
+     ==> RecFromMpidr(new_s, target_cpu).flags.runnable == RecFromMpidr(old_s, target_cpu).flags.runnable)
+ }
+-
++/*
++// XXX: UNCOVERED
+ pub open spec fn psci_cpu_suspend_spec(power_state: UInt32, entry_point_address: Address, context_id: UInt64, old_s: S, new_s: S) -> bool {
+   true[EXCLUDED]
+ }
+-
++*/
++/*
++// XXX: UNCOVERED
+ pub open spec fn psci_features_spec(psci_func_id: UInt32, result: PsciReturnCode, old_s: S, new_s: S) -> bool {
+   (result == PSCI_SUCCESS && psci_func_id is a supported PSCI function.[EXCLUDED] ==> result == PSCI_SUCCESS)
+   && (result == PSCI_SUCCESS && psci_func_id is not a supported PSCI function.[EXCLUDED] ==> result == PSCI_NOT_SUPPORTED)
+ }
++*/
+ 
++// XXX: COVERED
+ pub open spec fn psci_system_off_spec(old_s: S, new_s: S) -> bool {
+   (CurrentRealm(new_s).state == REALM_SYSTEM_OFF)
+-  && ( Following execution of PSCI_SYSTEM_OFF, control does not return to the caller.[EXCLUDED])
+ }
+ 
++
++// XXX: COVERED
+ pub open spec fn psci_system_reset_spec(old_s: S, new_s: S) -> bool {
+   (CurrentRealm(new_s).state == REALM_SYSTEM_OFF)
+-  && ( Following execution of PSCI_SYSTEM_RESET, control does not return to the caller.[EXCLUDED])
+ }
+ 
++/*
++// XXX: UNCOVERED
+ pub open spec fn psci_version_spec(result: PsciInterfaceVersion, old_s: S, new_s: S) -> bool {
+   true[EXCLUDED]
+ }
+-
++*/
+ fn main() {
+ }
+ 

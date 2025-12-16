@@ -1,0 +1,64 @@
+--- eac5_rule_old.txt	2025-12-13 15:39:01.924006371 +0900
++++ eac5_rule.txt	2025-12-13 15:44:46.327159387 +0900
+@@ -1,23 +1,23 @@
+ [Dangling output result]
+ --------------------------------------------
+ RMI_RTT_READ_ENTRY command
+-walk_level
+-desc
++walk_level // XXX: TP
++desc // XXX: FP
+ --------------------------------------------
+-RMI_VERSION command
++RMI_VERSION command // XXX: TP
+ lower
+ higher
+ --------------------------------------------
+-RSI_ATTESTATION_TOKEN_CONTINUE command
++RSI_ATTESTATION_TOKEN_CONTINUE command // XXX: TP
+ len
+ --------------------------------------------
+-RSI_ATTESTATION_TOKEN_INIT command
++RSI_ATTESTATION_TOKEN_INIT command // XXX: TP
+ size
+ --------------------------------------------
+-RSI_IPA_STATE_GET command
++RSI_IPA_STATE_GET command // XXX: TP
+ ripas
+ --------------------------------------------
+-RSI_MEASUREMENT_READ command
++RSI_MEASUREMENT_READ command // XXX: TP
+ value_0
+ value_1
+ value_2
+@@ -27,24 +27,24 @@
+ value_6
+ value_7
+ --------------------------------------------
+-RSI_VERSION command
++RSI_VERSION command // XXX: TP
+ lower
+ higher
+ --------------------------------------------
+-PSCI_VERSION command
++PSCI_VERSION command // XXX: TP
+ result
+ 
+ [Footprint check result]
+ --------------------------------------------
+-RSI_REALM_CONFIG command
++RSI_REALM_CONFIG command // XXX: FP
+ cfg.ipa_width
+ cfg.hash_algo
+ --------------------------------------------
+-PSCI_CPU_ON command
++PSCI_CPU_ON command // XXX: TP
+ target_rec.pc
+ --------------------------------------------
+-PSCI_SYSTEM_OFF command
++PSCI_SYSTEM_OFF command // XXX: TP
+ realm.state
+ --------------------------------------------
+-PSCI_SYSTEM_RESET command
++PSCI_SYSTEM_RESET command // XXX: TP
+ realm.state

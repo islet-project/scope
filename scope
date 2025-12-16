@@ -1,0 +1,2449 @@
+#!/usr/bin/env python3
+
+# [prerequisite]
+# sudo apt-get install libpoppler-dev
+# pdftotext -layout DEN0137_1.0-eac5_rmm-arch_external.pdf eac5.txt
+
+import re
+import argparse
+import os
+import sys
+import subprocess
+import tempfile
+from enum import Enum
+from signal import signal, SIGPIPE, SIG_DFL
+# XXX: this is needed for preventing errors when redirecting output with head (e.g., %(prog)s | head -5)
+signal(SIGPIPE, SIG_DFL)
+
+def parse_arguments():
+    """Parse command line arguments to select target specification version and mode."""
+    parser = argparse.ArgumentParser(
+        description='Convert RMM specification files to Verus verification code',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Available target versions:
+  eac5    - EAC5 specification (default)
+  rel0    - REL0 specification  
+  alp11   - ALP11 specification
+  alp12   - ALP12 specification
+  alp13   - ALP13 specification
+  alp14   - ALP14 specification
+
+Available modes:
+  reason  - Reasoning mode: performs full conversion for reasoning (default)
+  rule    - Rule-based check mode: performs rule-based checks
+  raw     - Raw mode: performs only document parsing
+
+Available input types:
+  txt     - a text file exists after executing pdftotext (default)
+  pdf     - pdftotext will be internally executed for a pdf file (e.g., DEN0137_1.0-eac5_rmm-arch_external.pdf)
+
+Options: 
+  no-dependency - Do not process dependency information (HIPAS/RIPAS)
+  add-none      - Add NONE variant in RmmRipas enum type for invariant proofs
+  is-coverage   - Add [EXCLUDED] in incomplete functions for measuing covered rates
+
+Examples:
+  %(prog)s --target rel0 --mode reason
+  %(prog)s --target alp14 --mode rule
+  %(prog)s --mode rule  # uses default target (eac5)
+  %(prog)s --input-type pdf
+        '''
+    )
+    
+    parser.add_argument(
+        '--target',
+        default='eac5',
+        help='Target specification file to process (default: eac5)'
+    )
+    
+    parser.add_argument(
+        '--mode',
+        choices=['reason', 'rule', 'raw'],
+        default='reason',
+        help='Processing mode: reason (reasoning mode), rule (rule-based checks), or raw (just parsing documents) (default: reason)'
+    )
+    
+    parser.add_argument(
+        '--input-type',
+        choices=['txt', 'pdf'],
+        default='txt',
+        help='Input file type: txt (pre-converted text) or pdf (auto-convert from PDF) (default: txt)'
+    )
+    
+    parser.add_argument(
+        '--no-dependency',
+        action='store_true',
+        help='Skip dependency processing and output (default: false)'
+    )
+
+    parser.add_argument(
+        '--add-none',
+        action='store_true',
+        help='Add NONE variant in RmmRipas enum type to facilitate invariant proofs (default: false)'
+    )
+
+    parser.add_argument(
+        '--is-coverage',
+        action='store_true',
+        help='Add [EXCLUDED] in incomplete functions for helping to measure covered rates (default: false)'
+    )
+    
+    return parser.parse_args()
+
+def validate_target(target):
+    """Validate that the target version is supported."""
+    supported_versions = [
+        'eac5', 'rel0', 'alp11', 'alp12', 'alp13', 'alp14'
+    ]
+
+    if target not in supported_versions:
+        print(f"Error: Target version '{target}' is not supported.", file=sys.stderr)
+        print(f"Supported versions: {', '.join(supported_versions)}", file=sys.stderr)
+        sys.exit(1)
+
+    return target
+
+def check_pdftotext_available():
+    """Check if pdftotext is available on the system."""
+    try:
+        subprocess.run(['pdftotext', '-v'], capture_output=True, check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+def convert_pdf_to_text(pdf_file, txt_file):
+    """Convert PDF file to text using pdftotext."""
+    try:
+        subprocess.run(['pdftotext', '-layout', pdf_file, txt_file], 
+                      capture_output=True, check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Error: PDF conversion failed: {e}", file=sys.stderr)
+        if e.stderr:
+            print(f"pdftotext error: {e.stderr.decode('utf-8')}", file=sys.stderr)
+        return False
+    except FileNotFoundError:
+        print("Error: pdftotext is not installed or not in PATH.", file=sys.stderr)
+        print("Please install poppler-utils: sudo apt-get install poppler-utils", file=sys.stderr)
+        return False
+
+# Parse command line arguments and validate target
+args = parse_arguments()
+target = args.target
+target = validate_target(target)
+mode = args.mode
+input_type = args.input_type
+
+# for rule-based checks or raw mode, conversion is not needed
+conversion_is_needed = True
+if mode == "rule" or mode == "raw":
+    conversion_is_needed = False
+
+# Check if dependency processing should be skipped
+no_dependency = args.no_dependency
+# Check if NONE variant should be added in RmmRipas enum type
+add_none = args.add_none
+# Check if it is for measuring covered rates
+is_coverage = args.is_coverage
+ 
+class StructType(Enum):
+     STRUCT = 1
+     STRUCT_BYTE_OFFSET = 2
+     FIELDSET = 3
+
+def handle_enum(enum_types, enum_name, space_indexes, tables, row_pattern, has_encoding):
+    enum_variants = []
+    for idx, contents in enumerate(tables):
+        # note that tables[0] contains a description about the type
+        if idx == 0:
+            continue
+        table_contents = contents
+        table_entries = table_contents.splitlines()
+        for table_entry in table_entries:
+            # We use this pattern matching to distinguish names from descriptions.
+            # Note that if description contains more than one line, it can be positioned 
+            # as the first element similar to name's location.
+            row_matched = row_pattern.match(table_entry)
+            if row_matched:
+                if len(space_indexes) == 1:
+                    index = space_indexes[0]
+                    # the below checks the row starting with a new entry
+                    if table_entry[index] != " ":
+                        res = table_entry.split()
+                        if has_encoding:
+                            encoding = res[0]
+                            name = res[1]
+                            #enum_variants.append(name+" = "+encoding)
+                            enum_variants.append(name)
+                        else:
+                            name = res[0]
+                            enum_variants.append(name)
+                # len(space_indexes) > 1 indicates that there are different empty spaces in the front
+                else:
+                    is_next_entry = False
+                    for index in space_indexes:
+                        # the below checks the row starting with a new entry
+                        if table_entry[index] != " ":
+                            is_next_entry = True
+                    if is_next_entry:
+                        res = table_entry.split()
+                        if has_encoding:
+                            encoding = res[0]
+                            name = res[1]
+                            #enum_variants.append(name+" = "+encoding)
+                            enum_variants.append(name)
+                        else:
+                            name = res[0]
+                            enum_variants.append(name)
+        if add_none and enum_name == "RmmRipas":
+            enum_variants.append("NONE")
+
+        enum_types[enum_name] = enum_variants
+
+def handle_struct(struct_types, struct_name, space_indexes, tables, row_pattern, struct_type):
+    struct_fields = []
+    array_fields = {}
+    array_name = ""
+    array_count = ""
+    is_array_field = False
+    for idx, contents in enumerate(tables):
+        # note that tables[0] contains a description about the type
+        if idx == 0:
+            continue
+        table_contents = contents
+        table_entries = table_contents.splitlines()
+        for table_entry in table_entries:
+            row_matched = row_pattern.match(table_entry)
+            if row_matched:
+                # TODO: refactor the common code
+                if len(space_indexes) == 1:
+                    index = space_indexes[0]
+                    # the below checks the row starting with a new entry
+                    if table_entry[index] != " ":
+                        res = table_entry.split()
+                        # the below is a heuristic to distinguish table contents from descriptions in alpha
+                        if not res[0].startswith("The"):
+                            field_name = res[0]
+                            if "[" in field_name:
+                                is_array_field = True
+                                # '-' is a temporary delimeter
+                                field_name = field_name.replace("[", "-")[:-1]
+                                array_name_count = field_name.split("-")
+                                array_name = array_name_count[0]
+                                array_count = array_name_count[1]
+                            else:
+                                is_array_field = False
+                            if struct_type is StructType.STRUCT:
+                                field_type = res[1]
+                            elif struct_type is StructType.STRUCT_BYTE_OFFSET:
+                                field_type = res[2]
+                            elif struct_type is StructType.FIELDSET:
+                                field_type = res[len(res) - 1]
+                            if is_array_field:
+                                array_fields[array_name] = (array_count, field_type)
+                            else:
+                                struct_fields.append((field_name, field_type))
+                # len(space_indexes) > 1 indicates that there are different empty spaces in the front
+                else:
+                    is_next_entry = False
+                    for index in space_indexes:
+                        # the below checks the row starting with a new entry
+                        if table_entry[index] != " ":
+                            is_next_entry = True
+                    if is_next_entry:
+                        res = table_entry.split()
+                        # the below is a heuristic to distinguish table contents from descriptions in alpha
+                        if not res[0].startswith("The"):
+                            field_name = res[0]
+                            if "[" in field_name:
+                                is_array_field = True
+                                # '-' is a temporary delimeter
+                                field_name = field_name.replace("[", "-")[:-1]
+                                array_name_count = field_name.split("-")
+                                array_name = array_name_count[0]
+                                array_count = array_name_count[1]
+                            else:
+                                is_array_field = False
+                            if struct_type is StructType.STRUCT:
+                                field_type = res[1]
+                            elif struct_type is StructType.STRUCT_BYTE_OFFSET:
+                                field_type = res[2]
+                            elif struct_type is StructType.FIELDSET:
+                                field_type = res[len(res) - 1]
+                            if is_array_field:
+                                array_fields[array_name] = (array_count, field_type)
+                            else:
+                                struct_fields.append((field_name, field_type))
+
+    for array_name, array_pair in array_fields.items():
+        array_count = array_pair[0]
+        field_type = array_pair[1]
+        # this is ASL representation (e.g., gprs[31]) and ASL will be converted 
+        # to Verus in a later phase altogether (see print_struct()))
+        array_type = field_type+"["+str(int(array_count) + 1)+"]"
+        if target == "alp14" or target == "alp13" or target == "alp12" or target == "alp11":
+            # no coalition occurs for an array type in a recent spec
+            array_type = field_type+"["+str(int(array_count))+"]"
+        struct_fields.append((array_name, array_type))
+
+    struct_types[struct_name] = struct_fields
+
+def handle_input(input_values, tables, row_pattern):
+    # By not using enumeration, we assume here that there is no case that 
+    # input values table span over one page
+    table_contents = tables[1]
+    table_entries = table_contents.splitlines()
+    for table_entry in table_entries:
+        row_matched = row_pattern.match(table_entry)
+        if row_matched: 
+            table_columns = table_entry.lstrip().split()
+            param_name = table_columns[0]
+            param_type = table_columns[3]
+            # the case when an unexpected space exists in name
+            if ":" in param_type:
+                param_name += table_columns[1]
+                param_type = table_columns[4]
+            input_values.append((param_name, param_type))
+
+def handle_output(output_values, tables, row_pattern):
+    for idx, contents in enumerate(tables):
+        # note that tables[0] contains the section title about output values
+        if idx == 0:
+            continue
+        table_contents = contents
+        table_entries = table_contents.splitlines()
+        for table_entry in table_entries:
+            row_matched = row_pattern.match(table_entry)
+            if row_matched: 
+                table_columns = table_entry.lstrip().split()
+                ret_name = table_columns[0]
+                ret_type = table_columns[3]
+                # an incorrect value case caused from pdftotext
+                if ret_type == "PsciInterfaceVersionInterface":
+                    ret_type = "PsciInterfaceVersion"
+                output_values.append((ret_name, ret_type))
+
+# XXX: name_index and value_index may need to be changed to name_indexes and value_indexes
+def handle_context(contexts, name_index, value_index, tables, row_pattern):
+    for idx, contents in enumerate(tables):
+        # note that tables[0] contains a description about the context
+        if idx == 0:
+            continue
+        table_contents = contents
+        table_entries = table_contents.splitlines()
+        context_name = ""
+        context_value = ""
+        for table_entry in table_entries:
+            row_matched = row_pattern.match(table_entry)
+            if row_matched:
+                table_row = table_entry.strip()
+                table_columns = table_row.split()
+                this_context_name = table_columns[0]
+                context_value_piece = table_columns[2]
+                # this would fix a subtle parsing issue in RMI_PDEV_IDE_RESET 
+                # where the row is divided into two separate lines
+                context_before = "false"
+                if len(table_columns) >= 4:
+                    context_before = table_columns[3]
+                    # the case when the entry (e.g., context value) in the middle is missing, 
+                    # because it is in the next line like the below (e.g., pdev_pre in RMI_VDEV_DESTROY)
+                    # Name                 Type                       Value                                      Before   Description
+                    # pdev_pre             RmmPdev                                                               true     PDEV
+                    #                                                 PdevAt(pdev_ptr)
+                    if context_before != "true" and context_before != "false":
+                        context_before = table_columns[2]
+                        if context_before == "true" or context_before == "false":
+                            context_value_piece = ""
+                # this would fix `RttWalk(rd,RMM_RTT_PAGE_LEVEL)` into `RttWalk(rd,base,RMM_RTT_PAGE_LEVEL)`
+                # the case like the below
+                # Name                 Type                       Value                                      Before   Description
+                # walk                 RmmRttWalkResult           RttWalk(rd, base,                          false     RTT walk result
+                #                                                 RMM_RTT_PAGE_LEVEL)
+                if context_before != "true" and context_before != "false":
+                    context_value_piece += table_columns[3]
+                # the starting row
+                if context_name == "" and context_value == "":
+                    # the exceptional case when the entry is empty and the value in the next column is parsed wrongly
+                    if context_value_piece != "true" and context_value_piece != "false":
+                        context_value += context_value_piece
+                    context_name = this_context_name
+                # this condition indicates the next context entry
+                else:
+                    if ",→" in context_value:
+                        context_value = context_value.replace(",→", "")
+                    # push the previous pair of context name and value
+                    contexts.append((context_name, context_value))
+                    context_value = ""
+                    context_value += context_value_piece
+                    context_name = this_context_name
+            else:
+                # subsequent pieces of the current context value
+                if len(table_entry) > name_index and table_entry[name_index] == " " and ((len(table_entry) > value_index and table_entry[value_index] != " ")
+                                                    or (len(table_entry) > value_index + 4 and table_entry[value_index + 4] != " ")
+                                                    or (len(table_entry) > value_index + 8 and table_entry[value_index + 8] != " ")):
+                    remaining_line = table_entry.strip()
+                    # we use double spaces to parse contents of different columns
+                    context_value_piece = remaining_line.split('  ')
+                    context_value += context_value_piece[0]
+        # push the last pair of context name and value
+        if context_name != "" and context_value != "":
+            if ",→" in context_value:
+                context_value = context_value.replace(",→", "")
+            contexts.append((context_name, context_value))
+
+def handle_failure_conds(failure_conditions, id_indexes, cond_indexes, tables, row_pattern):
+    for idx, contents in enumerate(tables):
+        # note that tables[0] contains the section title about failure conditions
+        if idx == 0:
+            continue
+        table_contents = contents
+        table_entries = table_contents.splitlines()
+
+        pre_condition = ""
+        post_condition = ""
+        pre_count_l = 0
+        pre_count_r = 0
+        post_count_l = 0
+        post_count_r = 0
+        for table_entry in table_entries:
+            cond_line = table_entry.lstrip()
+            row_matched = row_pattern.match(table_entry)
+            if row_matched:
+                if "pre:" in cond_line:
+                    id_condition = cond_line.split('pre:')
+                    pre_condition = id_condition[1].strip()
+                    pre_count_l = pre_condition.count('(')
+                    pre_count_r = pre_condition.count(')')
+                    # initialize post condition 
+                    post_condition = ""
+                else:
+                    raise ValueError("Unexpected case")
+                continue
+            else:
+                for id_index, cond_index in zip(id_indexes, cond_indexes):
+                    # this case contains 'post' condition
+                    if len(table_entry) > cond_index and table_entry[id_index] == " " and table_entry[cond_index] != " ":
+                        post_condition = cond_line.split()
+                        cond_kind = post_condition[0]
+                        # normal cases
+                        if "post:" in cond_kind:
+                            id_condition = cond_line.split('post:')
+                            post_condition = id_condition[1].strip()
+                            post_count_l = post_condition.count('(')
+                            post_count_r = post_condition.count(')')
+                            break
+                        # exceptional cases when 'pre' is not parsed well because of the empty content in the previous line
+                        elif "pre:" in cond_kind:
+                            id_condition = cond_line.split('pre:')
+                            pre_condition = id_condition[1].strip()
+                            pre_count_l = pre_condition.count('(')
+                            pre_count_r = pre_condition.count(')')
+                            # initialize post condition 
+                            post_condition = ""
+                            break
+                        else:
+                            continue
+                    elif ((len(table_entry) > cond_index+6 and table_entry[id_index] == " " and table_entry[cond_index+6] != " ") or
+                         (len(table_entry) > cond_index+10 and table_entry[id_index] == " " and table_entry[cond_index+10] != " ") or
+                         (len(table_entry) > cond_index+14 and table_entry[id_index] == " " and table_entry[cond_index+14] != " ") or
+                         (len(table_entry) > cond_index+18 and table_entry[id_index] == " " and table_entry[cond_index+18] != " ")):
+                        if "post:" in table_entry:
+                            continue
+                        else:
+                            if pre_count_l > pre_count_r or pre_condition.endswith("="):
+                                pre_condition_piece = table_entry.lstrip()
+                                if pre_condition.endswith("=") or pre_condition_piece.startswith("||") or pre_condition_piece.startswith("&&"):
+                                    pre_condition += " " + pre_condition_piece
+                                else:
+                                    pre_condition += pre_condition_piece
+                                pre_count_l += pre_condition_piece.count('(')
+                                pre_count_r += pre_condition_piece.count(')')
+                            else:
+                                post_condition_piece = table_entry.lstrip()
+                                if post_condition_piece.startswith("||") or post_condition_piece.startswith("&&"):
+                                    post_condition += " " + post_condition_piece
+                                else:
+                                    post_condition += post_condition_piece
+                                post_count_l += post_condition_piece.count('(')
+                                post_count_r += post_condition_piece.count(')')
+                            break
+                # flush the collected conditions
+                if pre_condition != "" and post_condition != "" and post_count_l == post_count_r:
+                    # if the condition endswith `.`, it is likely a prosaic description
+                    if not pre_condition.endswith(".") and not post_condition.endswith("."):
+                        failure_conditions.append((pre_condition, post_condition))
+                    elif is_coverage:
+                        if pre_condition.endswith("."):
+                            pre_condition += "[EXCLUDED]"
+                        if post_condition.endswith("."):
+                            post_condition += "[EXCLUDED]"
+                        failure_conditions.append((pre_condition, post_condition))
+                    pre_condition = ""
+                    post_condition = ""
+
+def handle_success_conds(success_conditions, id_indexes, cond_indexes, tables, row_pattern):
+    for idx, contents in enumerate(tables):
+        # note that tables[0] contains the section title about success conditions
+        if idx == 0:
+            continue
+        table_contents = contents
+        table_entries = table_contents.splitlines()
+
+        pre_condition = ""
+        post_condition = ""
+        pre_count_l = 0
+        pre_count_r = 0
+        post_count_l = 0
+        post_count_r = 0
+
+        for table_entry in table_entries:
+            cond_line = table_entry.lstrip()
+            if cond_line == "":
+                continue
+            row_matched = row_pattern.match(table_entry)
+            if row_matched:
+                if "pre:" in table_entry:
+                    id_condition = cond_line.split('pre:')
+                    pre_condition = id_condition[1].strip()
+                    pre_count_l = pre_condition.count('(')
+                    pre_count_r = pre_condition.count(')')
+                    # initialize post condition 
+                    post_condition = ""
+                elif "post:" in table_entry:
+                    id_condition = cond_line.split('post:')
+                    post_condition = id_condition[1].strip()
+                    post_count_l = post_condition.count('(') + post_condition.count('[')
+                    post_count_r = post_condition.count(')') + post_condition.count(']')
+                else:
+                    aligned_found = False
+                    for id_index, cond_index in zip(id_indexes, cond_indexes):
+                        # the case same with the post condition, yet here there is no explicit 'post:' keyword
+                        if len(table_entry) > cond_index and table_entry[id_index] != " " and table_entry[cond_index] != " ":
+                            aligned_found = True
+                            id_condition = cond_line.split() # XXX: split using a space seems to have a side effect
+                            for idx, condition_piece in enumerate(id_condition):
+                                if idx == 0:
+                                    continue
+                                elif idx == 1:
+                                    post_condition += condition_piece
+                                else:
+                                    post_condition += " " + condition_piece
+                            post_count_l = post_condition.count('(') + post_condition.count('[')
+                            post_count_r = post_condition.count(')') + post_condition.count(']')
+                            break
+                    if aligned_found == False:
+                        if pre_count_l > pre_count_r:
+                            raise ValueError("Not supported case yet, since there was no such case")
+                        else:
+                            for id_index, cond_index in zip(id_indexes, cond_indexes):
+                                # XXX: think the below condition again, as it may leave a side effect
+                                # a piece for post conditon
+                                if ((len(table_entry) > cond_index + 4 and table_entry[id_index] == " " and table_entry[cond_index + 4] != " ") or
+                                   (len(table_entry) > cond_index + 10 and table_entry[id_index] == " " and table_entry[cond_index + 10] != " ") or
+                                   (len(table_entry) > cond_index + 14 and table_entry[id_index] == " " and table_entry[cond_index + 14] != " ")):
+                                    # XXX: pre_count_l check might better to be located here
+                                    post_condition_piece = table_entry.lstrip()
+                                    post_condition += post_condition_piece
+                                    post_count_l += post_condition_piece.count('(') + post_condition_piece.count('[')
+                                    post_count_r += post_condition_piece.count(')') + post_condition_piece.count(']')
+                                    break
+
+            else:
+                # a piece for pre conditon
+                if pre_count_l > pre_count_r:
+                    pre_condition_piece = table_entry.lstrip()
+                    pre_condition += " " + pre_condition_piece
+                    pre_count_l += pre_condition_piece.count('(')
+                    pre_count_r += pre_condition_piece.count(')')
+                # a piece for post conditon
+                else:
+                    post_condition_piece = table_entry.lstrip()
+                    post_condition += " " + post_condition_piece
+                    post_count_l += post_condition_piece.count('(') + post_condition_piece.count('[')
+                    post_count_r += post_condition_piece.count(')') + post_condition_piece.count(']')
+            # flush the collected conditions
+            if post_condition != "" and post_count_l == post_count_r and not post_condition.endswith("="):
+                # if the condition endswith `.`, it is likely a prosaic description
+                if not pre_condition.endswith(".") and not post_condition.endswith("."):
+                    success_conditions.append((pre_condition, post_condition))
+                elif is_coverage:
+                    if pre_condition.endswith("."):
+                        pre_condition += "[EXCLUDED]"
+                    if post_condition.endswith("."):
+                        post_condition += "[EXCLUDED]"
+                    success_conditions.append((pre_condition, post_condition))
+                if pre_condition != "" and pre_count_l == pre_count_r:
+                    pre_condition = ""
+                post_condition = ""
+
+# XXX: currently, value_offsets are not used, thus removing it might be better
+def handle_footprint(footprints, id_offsets, value_offsets, tables, row_pattern):
+    for idx, contents in enumerate(tables):
+        # note that tables[0] contains a description about the context
+        if idx == 0:
+            continue
+        table_contents = contents
+        table_entries = table_contents.splitlines()
+        footprint_id = ""
+        footprint_value = ""
+        # the number of left/right parenthesis
+        left_p = 0
+        right_p = 0
+        for table_entry in table_entries:
+            row_matched = row_pattern.match(table_entry)
+            if row_matched:
+                is_next_entry = False
+                for offset in id_offsets:
+                    # the below checks the row starting with a new entry
+                    if table_entry[offset] != " ":
+                        is_next_entry = True
+                if is_next_entry:
+                    table_row = table_entry.strip()
+                    table_columns = table_row.split()
+                    footprint_id = table_columns[0]
+                    # some footprint value may contain a space, so the following handling is used
+                    for column_idx, column_contents in enumerate(table_columns):
+                        if column_idx == 0:
+                            continue
+                        else:
+                            footprint_value += column_contents
+                else:
+                    table_row = table_entry.strip()
+                    footprint_value += table_row
+            else:
+                if left_p != right_p:
+                    table_row = table_entry.strip()
+                    footprint_value += table_row
+            left_p = footprint_value.count("(")
+            right_p = footprint_value.count(")")
+            # the time to flush the value
+            if left_p == right_p and footprint_id != "":
+                footprints.append((footprint_id, footprint_value))
+                footprint_id = ""
+                footprint_value = ""                
+
+def coerce_last_type(target_str, function_name, type_name):
+    func_name = function_name+"("
+    if func_name in target_str:
+        idx = target_str.find(func_name)
+        start = idx+len(func_name)
+        left_idx = target_str.find("(", start)
+        right_idx = target_str.find(")", start)
+        while left_idx >= idx and left_idx < right_idx:
+            start = right_idx + 1
+            left_idx = target_str.find("(", start)
+            right_idx = target_str.find(")", start)
+        target_str = target_str[:right_idx] + " as " + type_name + target_str[right_idx:]
+    return target_str
+                
+#def coerce_last_type(target_str, function_name, type_name):
+#    return re.sub(function_name+"("+r"[^)]+"+")", function_name+'\\1'+" as "+type_name, target_str)
+
+def coerce_0th_arg_types(target_str, function_name, type_name):
+    return re.sub(function_name+"("+r"[^,]+"+")", function_name+'\\1'+" as "+type_name, target_str)
+
+def coerce_1st_arg_types(target_str, function_name, type_name):
+    return re.sub(function_name+"("+r"[^,]+"+","+"[^,]+"+")", function_name+'\\1'+" as "+type_name, target_str)
+
+def coerce_2nd_arg_types(target_str, function_name, type_name):
+    return re.sub(function_name+"("+r"[^,]+"+","+"[^,]+"+","+"[^,]+"+")", function_name+'\\1'+" as "+type_name, target_str)
+
+def change_equal(target_str, function_name):
+    return re.sub(r"\A"+function_name+"("+r"[^,]+"+","+")", '\\1'+"[EXCLUDED]", target_str)
+
+def convert_common(condition):
+    # this changes UInt(x) into (x)
+    condition = condition.replace("UInt", "")
+    # TRUE is for ASL while true is for verus
+    condition = condition.replace("TRUE", "true")
+    condition = condition.replace("IDE_true", "IDE_TRUE")
+    condition = condition.replace("RMM_true", "RMM_TRUE")
+    condition = condition.replace("RMI_SPDM_true", "RMI_SPDM_TRUE")
+    condition = condition.replace("RSI_true", "RSI_TRUE")
+    condition = condition.replace("FEATURE_true", "FEATURE_TRUE")
+    # FALSE is for ASL while false is for verus
+    condition = condition.replace("FALSE", "false")
+    condition = condition.replace("RMM_false", "RMM_FALSE")
+    condition = condition.replace("RSI_false", "RSI_FALSE")
+    condition = condition.replace("FEATURE_false", "FEATURE_FALSE")
+    condition = condition.replace("RMI_IDE_false", "RMI_IDE_FALSE")
+    # Zeros() is for ASL (an undefined function) while 0 is for verus
+    # TODO: handle with regex
+    condition = condition.replace("Zeros()", "0")
+    condition = condition.replace("Zeros(3)", "0")
+    condition = condition.replace("Zeros(64)", "0")
+    condition = condition.replace("Zeros(ADDRESS_WIDTH)", "0")
+    condition = condition.replace("Zeros(RMM_REALM_MEASUREMENT_WIDTH)", "0")
+    # 1.1-alp13
+    condition = condition.replace("Zeros( RMM_REALM_MEASUREMENT_WIDTH)", "0")
+    condition = condition.replace("[[", "[").replace("]]", "]")
+    condition = condition.replace("item0", "0").replace("item1", "1")
+    # assumption: power has the below signature
+    # `(2 ^` is for ASL while `pow2(` is for verus 
+    condition = condition.replace("(2 ^ ", "pow2(")
+    # add the default index in RMI_ERROR_REALM
+    condition = condition.replace("RMI_ERROR_REALM)", "RMI_ERROR_REALM(0))")
+    # coerce type for array indexing
+    condition = condition.replace("[plane_index]", "[plane_index as int]")
+    condition = condition.replace("[perm_index]", "[perm_index as int]")
+    if target == "alp14" or target == "alp13" or target == "alp12" or target == "alp11":
+        condition = coerce_2nd_arg_types(condition, "RttWalk", "int") 
+        condition = coerce_2nd_arg_types(condition, "RttWalkAnyNotAligned", "usize") 
+    condition = coerce_last_type(condition, "pow2", "nat")
+    condition = coerce_0th_arg_types(condition, "RttConfigIsValid", "int") 
+    condition = coerce_1st_arg_types(condition, "AttestationTokenWrite", "int") 
+    condition = coerce_1st_arg_types(condition, "AuxStateEqual16", "int") 
+    condition = coerce_1st_arg_types(condition, "AuxStateEqual32", "int") 
+    condition = coerce_1st_arg_types(condition, "PlaneRegValue", "int") 
+    condition = coerce_1st_arg_types(condition, "PlaneSysregValue", "int") 
+    condition = coerce_1st_arg_types(condition, "RecSysregValue", "int") 
+    condition = coerce_1st_arg_types(condition, "RttConfigIsValid", "int") 
+    condition = coerce_1st_arg_types(condition, "RttsAllProtectedEntriesRipas", "int") 
+    condition = coerce_1st_arg_types(condition, "RttsAllProtectedEntriesState", "int") 
+    condition = coerce_1st_arg_types(condition, "RttsAllUnprotectedEntriesState", "int") 
+    condition = coerce_1st_arg_types(condition, "RttsStateEqual", "int")
+    condition = coerce_last_type(condition, "AddrIsRttLevelAligned", "int") 
+    condition = coerce_last_type(condition, "AttestationTokenWrite", "int") 
+    condition = coerce_last_type(condition, "AuxAlias", "int") 
+    condition = coerce_last_type(condition, "AuxAlias16", "int") 
+    condition = coerce_last_type(condition, "AuxAlias32", "int") 
+    condition = coerce_last_type(condition, "RdevFromInstId", "int")
+    condition = coerce_last_type(condition, "RdevIdsAreValid", "int")
+    condition = coerce_last_type(condition, "RmiFeatureRegisterEncode", "int") 
+    condition = coerce_last_type(condition, "RmiAddressRangesEqual4", "int") 
+    condition = coerce_last_type(condition, "RmiAddressRangesEqual16", "int") 
+    condition = coerce_last_type(condition, "RsiFeatureRegisterEncode", "int") 
+    condition = coerce_last_type(condition, "RttConfigIsValid", "int") 
+    condition = coerce_last_type(condition, "RttLevelIsBlockOrPage", "int") 
+    condition = coerce_last_type(condition, "RttLevelIsStarting", "int") 
+    condition = coerce_last_type(condition, "RttLevelIsValid", "int") 
+    condition = coerce_last_type(condition, "RttLevelSize", "int") 
+    condition = coerce_last_type(condition, "RttUpperBound", "int") 
+    condition = coerce_last_type(condition, "RttWalk", "int") 
+    condition = coerce_last_type(condition, "ToBits64", "int") 
+    condition = coerce_last_type(condition, "VdevFromInstId", "int")
+    condition = coerce_last_type(condition, "VdevIdsAreValid", "int")
+    condition = coerce_last_type(condition, "AuxAligned", "int")
+    condition = coerce_last_type(condition, "AuxAligned16", "int")
+    condition = coerce_last_type(condition, "AuxAligned32", "int")
+    condition = coerce_last_type(condition, "RttAllEntriesContiguous", "int")
+    if is_coverage:
+        condition = change_equal(condition, "Equal")
+        condition = condition.replace("Cookie is invalid", "Cookie is invalid[EXCLUDED]")
+    return condition
+
+def traverse_context_for_substitution(old_contexts):
+    tmp_contexts = []
+    new_contexts = []
+    # TODO: refactor the common code
+    for dst_context in old_contexts:
+        dst_context_name = dst_context[0]
+        dst_context_value = dst_context[1]
+        for src_context in old_contexts:
+            src_context_name = src_context[0]
+            src_context_value = src_context[1]
+            if dst_context_name == src_context_name:
+                continue
+            else:
+                context_count = dst_context_value.count(src_context_name)
+                for i in range(context_count):
+                    dst_context_value = substitute_name_for_value(src_context_name, src_context_value, dst_context_value)
+        tmp_contexts.append((dst_context_name, dst_context_value))
+    for dst_context in tmp_contexts:
+        dst_context_name = dst_context[0]
+        dst_context_value = dst_context[1]
+        for src_context in tmp_contexts:
+            src_context_name = src_context[0]
+            src_context_value = src_context[1]
+            if dst_context_name == src_context_name:
+                continue
+            else:
+                context_count = dst_context_value.count(src_context_name)
+                for i in range(context_count):
+                    dst_context_value = substitute_name_for_value(src_context_name, src_context_value, dst_context_value)
+        new_contexts.append((dst_context_name, dst_context_value))
+    return new_contexts
+
+def convert_enum(enum_types):
+    new_enum_types = {}
+    for enum_name, variants in enum_types.items():
+        enum_variants = []
+        for old_v in variants:
+            new_v = old_v
+            if enum_name == "RmiStatusCode":
+                if old_v == "RMI_ERROR_REALM" or old_v == "RMI_ERROR_RTT" or old_v == "RMI_ERROR_RTT_AUX":
+                    new_v = old_v + "(int)"
+                if old_v == "RMI_SUCCESS":
+                    continue
+            enum_variants.append(new_v)
+        new_enum_types[enum_name] = enum_variants
+    return new_enum_types
+
+def convert_struct(struct_types):
+    new_struct_types = {}
+    for struct_name, fields in struct_types.items():
+        struct_fields = []
+        for field in fields:
+            field_name = field[0]
+            field_type = field[1]
+            # this would fix an incorrect parsing of RsiPlaneEnterFlags type in 1.1-alp13 (trap_hc: 2 -> trap_hc: RsiTrap)
+            if struct_name == "RsiPlaneEnterFlags" and field_name == "trap_hc":
+                field_type = "RsiTrap"
+            # this would fix an incorrect parsing of RmiRealmFlags0 type (pmu: enabled -> pmu: RmiFeature)
+            if struct_name == "RmiRealmFlags0" and field_name == "pmu":
+                field_type = "RmiFeature"
+            # this would reduce the burden of type coercing
+            if struct_name == "RmmRttWalkResult" and field_name == "level":
+                field_type = "int"
+            struct_fields.append((field_name, field_type))
+        # this would fix a parsing issue of RmiRealmParams type
+        if struct_name == "RmiRealmParams":
+            # without this handling, a duplicate field can be generated
+            if target == "alp14" or target == "alp13" or target == "alp12":
+                struct_fields.append(("rtt_base", "Address"))
+        # this would fix parsing issues of RmmPdev and RmiPdevParams type
+        if struct_name == "RmmPdev" or struct_name == "RmiPdevParams":
+            struct_fields.append(("coh_num_addr_range", "UInt64"))
+            struct_fields.append(("ncoh_num_addr_range", "UInt64"))
+        # this would fix parsing issues of RmiPdevParams type
+        if struct_name == "RmiPdevParams":
+            # this is a parsing issue in the document
+            struct_fields.append(("ncoh_addr_range", "RmiAddressRange[16]"))
+            if target == "alp12" or target == "alp11":
+                struct_fields.append(("root_id", "Bits16"))
+            # this would fix parsing issues of RmiPdevParams type (alp11)
+            if target == "alp11":
+                struct_fields.append(("ide_sid", "UInt64"))
+                struct_fields.append(("pdev_id", "Bits64"))
+                struct_fields.append(("flags", "RmiPdevFlags"))
+                struct_fields.append(("hash_algo", "RmiHashAlgorithm"))
+                struct_fields.append(("rid_base", "Bits16"))
+                struct_fields.append(("rid_top", "Bits16"))
+                struct_fields.append(("cert_id", "UInt64"))
+                struct_fields.append(("ecam_addr", "Address"))
+                struct_fields.append(("segment_id", "Bits8"))
+                struct_fields.append(("num_aux", "UInt64"))
+        # this would fix parsing issues of RmmRttS2APIndirect type (alp11)
+        if struct_name == "RmmRttS2APIndirect":
+            if target == "alp11":
+                struct_fields.append(("overlay_index", "UInt4"))
+        new_struct_types[struct_name] = struct_fields
+    return new_struct_types
+
+def convert_cmd_cond_funcs(old_cmd_cond_funcs):
+    if target == "alp14":
+        # a workaround of handling polymorphic function of VdevAttestInfoEqual()
+        old_cmd_cond_funcs.append(("VdevAttestInfoEqual1", [("attest_info_1","RmmVdevAttestInfo"), ("attest_info_2","RmmVdevAttestInfo")], "bool"))
+    if target == "alp14" or target == "alp13" or target == "alp12":
+        # a workaround of handling polymorphic function of VmidsAreFree()
+        old_cmd_cond_funcs.append(("VmidsAreFree1", [("vmid","u16"), ("aux_vmid","[u16;3]")], "bool"))
+        # a workaround of handling polymorphic function of DeviceCommunicate()
+        old_cmd_cond_funcs.append(("DeviceCommunicate1", [("vdev","RmmVdev")], "RmmDevCommState"))
+        old_cmd_cond_funcs.append(("DeviceCommunicate2", [("vdev","RmmVdev"), ("data", "RmiDevCommData")], "RmmDevCommState"))
+    if target == "alp11":
+        # a workaround of handling polymorphic function of VmidsAreFree()
+        old_cmd_cond_funcs.append(("VmidsAreFree1", [("vmid","u16"), ("aux_vmid","[u16;3]")], "bool"))
+        # a workaround of handling polymorphic function of DeviceCommunicate()
+        old_cmd_cond_funcs.append(("DeviceCommunicate1", [("vdev","RmmRdev")], "RmmDevCommState"))
+        old_cmd_cond_funcs.append(("DeviceCommunicate2", [("vdev","RmmVdev"), ("data", "RmiDevCommData")], "RmmDevCommState"))
+    new_cmd_cond_funcs = []
+    for func in old_cmd_cond_funcs:
+        func_name = func[0]
+        func_params = func[1]
+        func_ret = func[2]
+        if func_name.endswith("Equal") or func_name.endswith("Equal1") or func_name.startswith("To"):
+            new_cmd_cond_funcs.append((func_name, func_params, func_ret))
+        else:
+            # add state param to the function
+            param_name = "s"
+            param_type = "S"
+            func_params.insert(0, (param_name, param_type))
+            new_cmd_cond_funcs.append((func_name, func_params, func_ret))
+    return new_cmd_cond_funcs
+
+def convert_context(old_contexts):
+    new_contexts = []
+    for context in old_contexts:
+        context_name = context[0]
+        context_value = context[1]
+        context_value = convert_common(context_value)
+        if "RttWalk" in context_value:
+            comma_count = context_value.count(",")
+            # we handle RttWalk of 3 arguments using a different function name
+            if comma_count == 2:
+                context_value = context_value.replace("RttWalk", "RttWalk_")
+        new_contexts.append((context_name, context_value))
+    return new_contexts
+
+def convert_failure_conditions(old_failure_conditions):
+    new_failure_conditions = []
+    for failure_condition in old_failure_conditions:
+        pre = failure_condition[0]
+        post = failure_condition[1]
+        pre = convert_common(pre)
+        post = convert_common(post)
+        pre_pieces = pre.split("||")
+        new_pre = ""
+        for i, pre_piece in enumerate(pre_pieces):
+            if i != 0:
+                new_pre += "||"
+            # The below is for supporting the polymorphic function of VmidsAreFree
+            if "VmidsAreFree" in pre_piece:
+                comma_count = pre_piece.count(",")
+                # we handle VmidsAreFree of 2 argument differently
+                if comma_count == 1:
+                    new_pre += pre_piece.replace("VmidsAreFree", "VmidsAreFree1")
+                else:
+                    new_pre += pre_piece
+            elif "VdevAttestInfoEqual" in pre_piece:
+                comma_count = pre_piece.count(",")
+                # we handle VdevAttestInfoEqual of 2 argument differently
+                if comma_count == 1:
+                    new_pre += pre_piece.replace("VdevAttestInfoEqual", "VdevAttestInfoEqual1")
+                else:
+                    new_pre += pre_piece
+            else:
+                new_pre += pre_piece
+        pre = new_pre
+        if "ResultEqual" in post:
+            post_pieces = post.split("&&")
+            new_post = ""
+            for i, post_piece in enumerate(post_pieces):
+                if i != 0:
+                    new_post += " &&"
+                if "ResultEqual" in post_piece:
+                    comma_count = post_piece.count(",")
+                    # we handle ResultEqual of 3 arguments differently
+                    if comma_count == 2:
+                        res_piece = post_piece.split(",")
+                        # [:-1] removes a right parenthesis 
+                        coerce_res = res_piece[2].strip()[:-1] + " as int)"
+                        new_post += res_piece[0] + "," + res_piece[1] + "(" + coerce_res + ")"
+                    else:
+                        new_post += post_piece
+                else:
+                    new_post += post_piece
+            new_failure_conditions.append((pre, new_post))    
+        else:
+            if "&&" in post:
+                post_pieces = post.split("&&")
+                new_post = ""
+                for i, post_piece in enumerate(post_pieces):
+                    if i != 0:
+                        new_post += "&&"
+                    new_post += post_piece
+                new_failure_conditions.append((pre, new_post))
+            else:
+                new_failure_conditions.append((pre, post))
+    return new_failure_conditions
+
+def convert_success_conditions(old_success_conditions):
+    new_success_conditions = []
+    for success_condition in old_success_conditions:
+        pre = success_condition[0]
+        post = success_condition[1]
+        pre = convert_common(pre)
+        post = convert_common(post)
+        # TODO: refactor the common code
+        pre_pieces = pre.split("&&")
+        new_pre = ""
+        for i, pre_piece in enumerate(pre_pieces):
+            if i != 0:
+                new_pre += "&&"
+            # The below is for supporting the polymorphic function of DeviceCommunicate
+            if "DeviceCommunicate" in pre_piece:
+                comma_count = pre_piece.count(",")
+                # we handle DeviceCommunicate of 1 argument differently
+                if comma_count == 0:
+                    new_pre += pre_piece.replace("DeviceCommunicate", "DeviceCommunicate1")
+                # we handle DeviceCommunicate of 2 arguments with vdev differently
+                elif comma_count == 1 and "vdev" in pre_piece:
+                    new_pre += pre_piece.replace("DeviceCommunicate(vdev", "DeviceCommunicate2(vdev")
+                else:
+                    new_pre += pre_piece
+            else:
+                new_pre += pre_piece
+        pre = new_pre
+        post_pieces = post.split("&&")
+        new_post = ""
+        for i, post_piece in enumerate(post_pieces):
+            if i != 0:
+                new_post += "&&"
+            # The below is for supporting the polymorphic function of DeviceCommunicate
+            if "DeviceCommunicate" in post_piece:
+                comma_count = post_piece.count(",")
+                # we handle DeviceCommunicate of 1 argument differently
+                if comma_count == 0:
+                    new_post += post_piece.replace("DeviceCommunicate", "DeviceCommunicate1")
+                # we handle DeviceCommunicate of 2 arguments with vdev differently
+                elif comma_count == 1 and "vdev" in post_piece:
+                    new_post += post_piece.replace("DeviceCommunicate(vdev", "DeviceCommunicate2(vdev")
+                else:
+                    new_post += post_piece
+            else:
+                new_post += post_piece
+        post = new_post
+        new_success_conditions.append((pre, post))
+    return new_success_conditions
+
+def collect_types(section, section_lines, enum_types, struct_types):
+    # the case for enumeration
+    if "enumeration" in section:
+        title = section_lines[0].split()
+        enum_name = title[0]
+        if " Encoding" in section:
+            tables = re.split("Encoding\\s+Name\\s+Description\n", section)
+            row_pattern = re.compile("\\s+[\\-0-9]+\\s+[A-Z][A-Z0-9_]+")
+            space_indexes = []
+            # this is for checking entries consisting of more than one line
+            for line in section_lines:
+                if "Name" in line:
+                    start_index = line.find("Name")
+                    space_indexes.append(start_index)
+            handle_enum(enum_types, enum_name, space_indexes, tables, row_pattern, True)
+        else:
+            tables = re.split("Name\\s+Description\n", section)
+            row_pattern = re.compile("\\s+[A-Z][A-Z0-9_]+")
+            space_indexes = []
+            # this is for checking entries consisting of more than one line
+            for line in section_lines:
+                if "Name" in line:
+                    start_index = line.find("Name")
+                    space_indexes.append(start_index)
+            handle_enum(enum_types, enum_name, space_indexes, tables, row_pattern, False)
+    # the case for structure
+    elif "structure" in section:
+        title = section_lines[0].split()
+        struct_name = title[0]
+        space_indexes = []
+        if "Byte offset" in section:
+            tables = re.split("Name\\s+Byte offset\\s+Type\\s+Description\n", section)
+            row_pattern = re.compile("\\s+[a-zA-Z][a-zA-Z0-9_\\[\\]]+\\s+0x[0-9a-f]+\\s+[A-Z][A-Za-z0-9\\[\\]]+\\s+")
+            for line in section_lines:
+                if "Name" in line:
+                    start_index = line.find("Name")
+                    space_indexes.append(start_index)
+            handle_struct(struct_types, struct_name, space_indexes, tables, row_pattern, StructType.STRUCT_BYTE_OFFSET)
+        elif "RmmSystemRegisters" in struct_name:
+            return
+        else:
+            tables = re.split("Name\\s+Type\\s+Description\n", section)
+            row_pattern = re.compile("\\s+[a-zA-Z][a-zA-Z0-9_]+\\s+[A-Z][A-Za-z0-9\\[\\]]+\\s+")
+            # this is for checking entries consisting of more than one line
+            for line in section_lines:
+                if "Name" in line:
+                    start_index = line.find("Name")
+                    space_indexes.append(start_index)
+            handle_struct(struct_types, struct_name, space_indexes, tables, row_pattern, StructType.STRUCT)
+    # the case for fieldset
+    elif "fieldset" in section:
+        title = section_lines[0].split()
+        fieldset_name = title[0]
+        space_indexes = []
+        tables = re.split("Name\\s+Bits\\s+Description\\s+Value\n", section)
+        row_pattern = re.compile("\\s+[a-zA-Z][a-zA-Z0-9_]+\\s+\\d+")
+        for line in section_lines:
+            if "Name" in line:
+                start_index = line.find("Name")
+                space_indexes.append(start_index)
+        handle_struct(struct_types, fieldset_name, space_indexes, tables, row_pattern, StructType.FIELDSET)
+
+def collect_dependency(section, section_lines, dependency):
+    tables = re.split("Command\\s+RIPAS\\s+HIPAS\\s+New RIPAS\\s+New HIPAS\n", section)
+    # XXX: `\\s` is intentionally added before `\\s+` to prevent 
+    #      texts other than name from being incorrectly selected
+    row_pattern = re.compile("\\s+[A-Z_]+\\s\\s+")
+    # extract indexes to exploit indentation information for parsing
+    command_index = 0
+    ripas_index = 0
+    hipas_index = 0
+    new_ripas_index = 0
+    new_hipas_index = 0
+    for line in section_lines:
+        if "Command" in line:
+            command_index = line.find("Command")
+            ripas_index = line.find("RIPAS")
+            hipas_index = line.find("HIPAS")
+            new_ripas_index = line.find("New RIPAS")
+            new_hipas_index = line.find("New HIPAS")
+    # refer to handle_input
+    table_contents = tables[1]
+    table_entries = table_contents.splitlines()
+    
+    command = ""
+    ripas = ""
+    hipas = ""
+    new_ripas = ""
+    new_hipas = ""
+    for table_entry in table_entries:
+        row_matched = row_pattern.match(table_entry)
+        # this will start collecting a new entry
+        if row_matched:
+            # flush the collected entry
+            if command != "":
+                dependency.append((command, ripas, hipas, new_ripas, new_hipas))
+                command = ""
+                ripas = ""
+                hipas = ""
+                new_ripas = ""
+                new_hipas = ""
+            len_table_entry = len(table_entry)
+            command = table_entry[command_index:ripas_index-1].strip()
+            ripas = table_entry[ripas_index:hipas_index-1].strip()
+            hipas = table_entry[hipas_index:new_ripas_index-1].strip()
+            new_ripas_hipas = table_entry[new_ripas_index:].strip()
+            split_new_ripas_hipas = new_ripas_hipas.split()
+            new_hipas = split_new_ripas_hipas[-1]
+            for idx, word in enumerate(split_new_ripas_hipas):
+                if idx != len(split_new_ripas_hipas) - 1:
+                    new_ripas = new_ripas + " " + word
+                    new_ripas = new_ripas.strip()
+        else:
+            len_table_entry = len(table_entry) 
+            if len_table_entry < ripas_index:
+                continue
+            command_cell = table_entry[command_index:ripas_index-1].strip()
+            if command_cell != "":
+                # TODO: refactor the common code with the above
+                # flush the collected entry
+                if command != "":
+                    dependency.append((command, ripas, hipas, new_ripas, new_hipas))
+                    command = ""
+                    ripas = ""
+                    hipas = ""
+                    new_ripas = ""
+                    new_hipas = ""
+            else:
+                len_table_entry = len(table_entry)
+                if len_table_entry > new_ripas_index:
+                    new_ripas_cell = table_entry[new_ripas_index:].strip()
+                    hipas_cell = table_entry[hipas_index:new_ripas_index-1].strip()
+                    ripas_cell = table_entry[ripas_index:hipas_index-1].strip()
+                    new_ripas += " " + new_ripas_cell
+                    hipas += " " + hipas_cell
+                    ripas += " " + ripas_cell
+                elif len_table_entry > hipas_index: 
+                    hipas_cell = table_entry[hipas_index:new_ripas_index-1].strip()
+                    ripas_cell = table_entry[ripas_index:hipas_index-1].strip()
+                    hipas += " " + hipas_cell
+                    ripas += " " + ripas_cell
+                elif len_table_entry > ripas_index: 
+                    ripas_cell = table_entry[ripas_index:hipas_index-1].strip()
+                    ripas += " " + ripas_cell
+                else:
+                    raise ValueError("Unexpected case")
+
+def coalesce_dependency(dependency):
+    new_dependency = []
+    for d in dependency:
+        command = d[0]
+        ripas = d[1]
+        hipas = d[2]
+        new_ripas = d[3]
+        new_hipas = d[4]
+        cmd_history =  list(filter(lambda x: x[0] == command, new_dependency))
+        # there is no existing entry having the same command (e.g., new entry)
+        if len(cmd_history) == 0:
+            ripas_list = []
+            hipas_list = []
+            new_ripas_list = []
+            new_hipas_list = []
+            ripas_list.append(ripas)
+            hipas_list.append(hipas)
+            new_ripas_list.append(new_ripas)
+            new_hipas_list.append(new_hipas)
+            new_dependency.append((command, ripas_list, hipas_list, new_ripas_list, new_hipas_list))
+        # there is the existing entry having the same command
+        else:
+            prev_d = cmd_history[0]
+            prev_ripas = prev_d[1]
+            prev_hipas = prev_d[2]
+            prev_new_ripas = prev_d[3]
+            prev_new_hipas = prev_d[4]
+            # The existing lists are updated in the below
+            prev_ripas.append(ripas)
+            prev_hipas.append(hipas)
+            prev_new_ripas.append(new_ripas)
+            prev_new_hipas.append(new_hipas)
+    return new_dependency
+
+def preprocess_ripas(ripas):
+    ripas = ripas.replace("If", "")
+    ripas = ripas.replace("RIPAS is", "").strip()
+    return ripas
+
+def preprocess_hipas(hipas):
+    hipas = hipas.replace("If", "")
+    hipas = hipas.replace("HIPAS is", "").strip()
+    return hipas
+
+def preprocess_dependency(dependency, enum_types):
+    ripas_types = enum_types["RmmRipas"]
+    hipas_types = enum_types["RmmRttEntryState"]
+    new_dependency = []
+    for d in dependency:
+        command = d[0]
+        prev_ripas_list = d[1]
+        prev_hipas_list = d[2]
+        prev_new_ripas_list = d[3]
+        prev_new_hipas_list = d[4]
+        ripas_list = []
+        hipas_list = []
+        new_ripas_list = []
+        new_hipas_list = []
+        for ripas in prev_ripas_list:
+            ripas = preprocess_ripas(ripas)
+            if ripas != "None":
+                found = False
+                for this_type in ripas_types:
+                    if ripas == this_type:
+                        found = True
+                    elif ripas == "not "+this_type:
+                        found = True
+                if found == False:
+                    ripas = "Not supported"
+            ripas_list.append(ripas)
+        for hipas in prev_hipas_list:
+            hipas = preprocess_hipas(hipas)
+            if hipas != "None":
+                found = False
+                for this_type in hipas_types:
+                    if hipas == this_type:
+                        found = True
+                    elif hipas == "not "+this_type:
+                        found = True
+                if found == False:
+                    hipas = "Not supported"
+            hipas_list.append(hipas)
+        for new_ripas in prev_new_ripas_list:
+            if new_ripas != "Unchanged":
+                found = False
+                for this_type in ripas_types:
+                    if new_ripas == this_type:
+                        found = True
+                if found == False:
+                    new_ripas = "Not supported"
+            new_ripas_list.append(new_ripas)
+        for new_hipas in prev_new_hipas_list:
+            if new_hipas != "Unchanged":
+                found = False
+                for this_type in hipas_types:
+                    if new_hipas == this_type:
+                        found = True
+                if found == False:
+                    new_hipas = "Not supported"
+            new_hipas_list.append(new_hipas)
+        new_dependency.append((command, ripas_list, hipas_list, new_ripas_list, new_hipas_list))
+    return new_dependency
+
+def process_param_line(func_params, param_line):
+    param = param_line.split(" : ")
+    param_name = param[0]
+    param_type = param[1]
+    func_params.append((param_name, param_type))
+
+def process_param_name(old_name):
+    new_name = old_name
+    # abstract is a keyword in verus, and thus should be avoided
+    if "abstract" == old_name:
+        new_name = old_name + "_"
+    return new_name
+
+def process_func_type(old_type):
+    new_type = old_type
+    # XXX: this form (a pair) has been introduced in 1.0-alp13
+    if "(bits(64), bits(64))" in old_type:
+        new_type = "(u64, u64)"
+    # XXX: this form has been introduced in 1.0-alp13 for some reasons
+    # array type (array [[count]] of type_name => [type_name; count])
+    elif "array [[" in old_type and " of " in old_type:
+        tmp_type = old_type.split(' of ')
+        type_name = tmp_type[1]
+        # array and bits (array [[16]] of bits(64) => [u64; 16])
+        if "bits(" in type_name:
+            old_type = type_name
+            bits_num = old_type.replace('bits(', '').replace(')', '')
+            type_name = "u" + bits_num
+        count = tmp_type[0].replace('array [[', '').replace(']]', '')
+        new_type = "[" + type_name + "; " + count +"]"
+    # array type (array [count] of type_name => [type_name; count])
+    # array type (array[count] of type_name => [type_name; count])
+    elif ("array [" in old_type or "array[" in old_type) and " of " in old_type:
+        tmp_type = old_type.split(' of ')
+        type_name = tmp_type[1]
+        # array and bits (array [16] of bits(64) => [u64; 16])
+        # array and bits (array[16] of bits(64) => [u64; 16])
+        if "bits(" in type_name:
+            old_type = type_name
+            bits_num = old_type.replace('bits(', '').replace(')', '')
+            type_name = "u" + bits_num
+        count = tmp_type[0].replace('array [', '').replace('array[', '').replace(']', '')
+        new_type = "[" + type_name + "; " + count +"]"
+    elif "bits(" in old_type:
+        bits_num = old_type.replace('bits(', '').replace(')', '')
+        # bits(size * 8) -> [u8; 1]     
+        # Note that [u8; size] does not work because it attempts to use a non-constant value
+        if "*" in old_type:
+            nums = bits_num.split(' * ')
+            new_type = "[u" + nums[1] + "; 1]"
+        else:
+            new_type = "u" + bits_num
+    # integer type (integer => int)
+    elif "integer" in old_type:
+        new_type = "int"
+    # boolean type (boolean => bool)
+    elif "boolean" in old_type:
+        new_type = "bool"
+    return new_type
+
+def collect_cmd_cond_funcs(section_lines, cmd_cond_funcs):
+    func_name = section_lines[0]
+    func_ret = ""
+    func_params = []
+    if "function" in func_name:
+        func_name = func_name.replace(' function', '')
+        func_signature = ""
+        is_func_signature = False
+        for line in section_lines:
+            f_line = line.lstrip()
+            if is_func_signature == True:
+                func_signature += "\n" + f_line
+            # start delimiter
+            if "func" in f_line and "(" in f_line:
+                is_func_signature = True
+                func_signature += f_line
+            # end delimiter
+            if "=>" in f_line:
+                is_func_signature = False
+                break
+            # another end delimiter (AuxStates does not end with `=>`)
+            if ":" in f_line and ")" in f_line and not "bits" in f_line:
+                is_func_signature = False
+                break
+
+        sig_lines = func_signature.splitlines()
+        for sig_line in sig_lines:
+            # all things are in the same line
+            if "func" in sig_line and ":" in sig_line and "=>" in sig_line:
+                func_param_ret = sig_line.split(") => ")
+                func_line = func_param_ret[0]
+                func_ret = func_param_ret[1]
+                index = func_line.find("(")
+                param_line = func_line[index+1:]
+                process_param_line(func_params, param_line)
+            # the last param and return value are in the same line
+            elif ":" in sig_line and "=>" in sig_line:
+                param_ret = sig_line.split(") => ")
+                param_line = param_ret[0]
+                func_ret = param_ret[1]
+                process_param_line(func_params, param_line)
+            # no param and one return value
+            elif "()" in sig_line and "=>" in sig_line:
+                param_ret = sig_line.split(") => ")
+                func_ret = param_ret[1]
+            # only one param is in the line
+            elif ":" in sig_line and "," in sig_line:
+                # remove the last comma symbol
+                param_line = sig_line[:-1]
+                process_param_line(func_params, param_line)
+            # the last param and no return value
+            elif ":" in sig_line and ")" in sig_line:
+                # remove the last right parenthesis symbol
+                param_line = sig_line[:-1]
+                process_param_line(func_params, param_line)
+            # another line containing the function name
+            elif "func" in sig_line:
+                continue
+            else:
+                print("Unexpected case!")
+
+        cmd_cond_funcs.append((func_name, func_params, func_ret))
+
+def collect_interface(section, input_values, contexts, output_values):
+    sub_sections = re.split("[A-Z]\\d\\.\\d+\\.\\d+\\.\\d+\\.\\d+\\s+", section)
+    for sub_section in sub_sections:
+        sub_section_lines = sub_section.splitlines()
+        sub_section_title = sub_section_lines[0]
+        name_index = 0
+        value_index = 0
+        if "Input values" in sub_section_title:
+            tables = re.split("Name\\s+Register\\s+Bits\\s+Type\\s+Description\n", sub_section)
+            # sometimes Name contains a space in the middle unexpectedly (e.g., `lowest_affinity_leve l`)
+            row_pattern = re.compile("\\s+[a-z0-9_\\s]+\\s+X[0-9]+\\s+[0-9]+:[0-9]\\s+")
+            handle_input(input_values, tables, row_pattern)
+        elif "Context" in sub_section_title:
+            tables = re.split("Name\\s+Type\\s+Value\\s+Before\\s+Description\n", sub_section)
+            row_pattern = re.compile("\\s+[a-z0-9_]+\\s+[A-Z][a-zA-Z0-9_]+\\s+[a-zA-Z0-9\\(\\)\\.]+")
+            for line in sub_section_lines:
+                if "Name" in line and "Value" in line:
+                    name_index = line.find("Name")
+                    value_index = line.find("Value")
+            handle_context(contexts, name_index, value_index, tables, row_pattern)
+        elif "Output values" in sub_section_title:
+            tables = re.split("Name\\s+Register\\s+Bits\\s+Type\\s+Description\n", sub_section)
+            row_pattern = re.compile("\\s+[a-z0-9_]+\\s+X[0-9]\\s+[0-9]+:[0-9]\\s+")
+            handle_output(output_values, tables, row_pattern)
+
+def collect_failure_conds(failure_conditions, section):
+    sub_sections = re.split("[A-Z]\\d\\.\\d+\\.\\d+\\.\\d+\\.\\d+\\s+", section)
+
+    for sub_section in sub_sections:
+        sub_section_lines = sub_section.splitlines()
+        sub_section_title = sub_section_lines[0]
+        if "Failure condition ordering" in sub_section_title:
+            continue
+        else:
+            tables = re.split("ID\\s+Condition\n", sub_section)
+            # XXX: is there any condition which does not contain `pre`?
+            #      sometimes ID contains a space in the middle unexpectedly (e.g., metadata_invali d)
+            row_pattern = re.compile("\\s+[a-z0-9_\\s]+pre:")
+            id_indexes = []
+            cond_indexes = []
+            for line in sub_section_lines:
+                if "ID" in line and "Condition" in line: 
+                    id_index = line.find("ID")
+                    id_indexes.append(id_index)
+                    cond_index = line.find("Condition")
+                    cond_indexes.append(cond_index)
+            handle_failure_conds(failure_conditions, id_indexes, cond_indexes, tables, row_pattern)
+
+def collect_success_conds(success_conditions, section):
+    # success conditions does not have a sub section unlike failure conditions,
+    # so we do not have to split the section into sub sections
+    section_lines = section.splitlines()
+    tables = re.split("ID\\s+Condition\n", section)
+    row_pattern = re.compile("\\s+[a-z][a-z0-9_]+")
+    id_indexes = []
+    cond_indexes = []
+    for line in section_lines:
+        if "ID" in line and "Condition" in line: 
+            id_index = line.find("ID")
+            id_indexes.append(id_index)
+            cond_index = line.find("Condition")
+            cond_indexes.append(cond_index)
+    handle_success_conds(success_conditions, id_indexes, cond_indexes, tables, row_pattern)
+
+def collect_footprint(footprints, section):
+    # footprint does not have a sub section unlike failure conditions,
+    # so we do not have to split the section into sub sections
+    section_lines = section.splitlines()
+    tables = re.split("ID\\s+Value\n", section)
+    row_pattern = re.compile("\\s+[a-z][a-z0-9_]+")
+    id_offsets = []
+    value_offsets = []
+    for line in section_lines:
+        if "ID" in line and "Value" in line: 
+            id_offset = line.find("ID")
+            id_offsets.append(id_offset)
+            value_offset = line.find("Value")
+            value_offsets.append(value_offset)
+    handle_footprint(footprints, id_offsets, value_offsets, tables, row_pattern)
+
+def print_preamble(enum_types):
+    print("use vstd::prelude::*;\n")
+    print("verus! {\n")
+    print("type UInt2 = u8;")
+    print("type UInt3 = u8;")
+    print("type UInt4 = u8;")
+    print("type UInt5 = u8;")
+    print("type UInt6 = u8;")
+    print("type UInt8 = u8;")
+    print("type UInt15 = u16;")
+    print("type UInt16 = u16;")
+    print("type UInt32 = u32;")
+    print("type UInt64 = u64;")
+    print("type Int8 = i8;")
+    print("type Int64 = i64;")
+    print("type Bits64 = u64;")
+    print("type Address = usize;")
+    print("type RmmRealmMeasurement = [u8; 64];\n")
+    for name, variants in enum_types.items():
+        print("use crate::"+name+"::*;")
+    # rely on a built-in function for power operation
+    print("use vstd::arithmetic::power2::pow2;\n")
+    print("use vstd::arithmetic::power::pow;\n")
+    # undefined const values (see RMM constants)
+    print("pub spec const RMM_RTT_PAGE_LEVEL:int = 3;")
+    print("pub spec const RMM_RTT_TREE_PRIMARY:int = 0;")
+    print("pub spec const RMM_NUM_PERM_OVERLAY_INDICES:int = 15;")
+    print("pub spec const RMM_GRANULE_SIZE:usize  = 4096;")
+    print("pub spec const RMM_GRANULE_SIZE_ORDER:nat  = 10;")
+    print("pub spec const FID_PSCI_CPU_ON:int = 0xC4000003;")
+    print("pub spec const FID_PSCI_AFFINITY_INFO:int = 0xC4000004;\n")
+    # the empty structure
+    print("struct RmmSystemRegisters{}");
+    # our defined structure
+    print("struct S {")
+    print("    pub mem: [u8; 64],")
+    print("}\n")
+    # TODO: it might be better to print the below while visiting the relevant command condition function
+    if target == "alp14" or target == "alp13" or target == "alp12" or target == "alp11":
+        # a workaround of handling polymorphic function of VersionEqual()
+        print("pub open spec fn VersionEqualRsi(ver1: RsiInterfaceVersion, ver2: RsiInterfaceVersion) -> bool;")
+    print("pub open spec fn VersionEqualRmi(ver1: RmiInterfaceVersion, ver2: RmiInterfaceVersion) -> bool;")
+    print("pub open spec fn RttWalk_(s: S, rd: Address, addr: Address, level: int) -> RmmRttWalkResult;\n")
+
+def print_postamble():
+    print("fn main() {")
+    print("}\n")
+    print("}")
+
+def print_enum(enum_types):
+    for name, variants in enum_types.items():
+        print("pub enum "+name+" {")
+        for v in variants:
+            print("  "+v+",")
+        print("}\n")
+
+def print_struct(struct_types):
+    for name, fields in struct_types.items():
+        print("struct "+name+" {")
+        for field in fields:
+            field_name = field[0]
+            field_type = field[1]
+            # note that Bits types can come with arrays
+            if "Bits" in field[1]:
+                if field_type.startswith("Bits512"):
+                    field_type = field_type.replace("Bits512", "UInt64[8]")
+                elif field_type.startswith("Bits256"):
+                    field_type = field_type.replace("Bits256", "UInt64[4]")
+                else: 
+                    field_type = field_type.replace("Bits", "UInt")
+            # ASL's arrays and rust's array have different representation (e.g., RmmRealmMeasurement[5])
+            if "[" in field_type:
+                field_type = "["+field_type.replace("[", "; ")
+            print("  pub "+field_name+": "+field_type+",")
+        print("}\n")
+
+def print_dependency_raw(dependency):
+    for d in dependency:
+        command = d[0]
+        ripas = d[1]
+        hipas = d[2]
+        new_ripas = d[3]
+        new_hipas = d[4]
+        for i in range(len(ripas)):
+            print("%-30s" %command + "%-60s" %ripas[i] + "%-30s" %hipas[i])
+            print("                              "+"%-60s" %new_ripas[i] + "%-30s" %new_hipas[i])
+
+def synthesize_none_ripas(ripas_types):
+    tmp_ripas = ""
+    for idx, this_type in enumerate(ripas_types):
+        if idx != 0:
+            tmp_ripas += " || "
+        tmp_ripas += "old_walk.rtte.ripas == " + this_type
+    return tmp_ripas
+
+def synthesize_none_hipas(hipas_types):
+    tmp_hipas = ""
+    for idx, this_type in enumerate(hipas_types):
+        if idx != 0:
+            tmp_hipas += " || "
+        tmp_hipas += "old_walk.rtte.state == " + this_type
+    return tmp_hipas
+
+def print_synthesized_old(entry_type, this_list, this_types):
+    if entry_type != "ripas" and entry_type != "state":
+        raise ValueError("Unexpected case")
+    out = ""
+    prev_value = ""
+    for idx, this_value in enumerate(this_list):
+        #this_value = this_value.replace("not ", "!")
+        if this_value == "Not supported":
+            break
+        # check whether this value (ripas/hipas) is the same with the previous one
+        elif this_value == prev_value:
+            break
+        elif this_value == "None":
+            out = "true"
+        else:
+            if idx != 0:
+                out += " || "
+            if this_value.startswith("not "):
+                # [4:] removes 'not ' keyword
+                out += "old_walk.rtte."+entry_type+" != " + this_value[4:]
+            else:
+                out += "old_walk.rtte."+entry_type+" == " + this_value
+        prev_value = this_value
+    if out != "":
+        print("  assert(result.is_Ok() ==> ("+out+"));")
+    else:
+        print("  // Unsupported")
+
+def print_synthesized_new(entry_type, this_value):
+    if entry_type != "ripas" and entry_type != "state":
+        raise ValueError("Unexpected case")
+    out = ""
+    if this_value == "Not supported":
+        out = ""
+    elif this_value == "Unchanged":
+        out = "new_walk.rtte."+entry_type+" == old_walk.rtte."+entry_type
+    else:
+        out = "new_walk.rtte."+entry_type+" == " + this_value
+    if out != "":
+        print("  assert(result.is_Ok() ==> ("+out+"));")
+    else:
+        print("  // Unsupported")
+
+def print_synthesized_new_multiple_rows(entry_type, ripas_all_equal, hipas_all_equal, ripas_list, hipas_list, new_list):
+    if entry_type != "ripas" and entry_type != "state":
+        raise ValueError("Unexpected case")
+    for this_ripas, this_hipas, this_new_value in zip(ripas_list, hipas_list, new_list):
+        right = ""
+        if this_ripas == "Not supported" or this_hipas == "Not supported" or this_new_value == "Not supported":
+            print("  // Unsupported")
+            break
+        if this_new_value == "Unchanged":
+            right = "new_walk.rtte."+entry_type+" == old_walk.rtte."+entry_type
+        else:
+            right = "new_walk.rtte."+entry_type+" == "+this_new_value
+        left = "result.is_Ok()"
+        if not ripas_all_equal:
+            if this_ripas.startswith("not "):
+                # [4:] removes 'not ' keyword
+                left += " && old_walk.rtte.ripas != " + this_ripas[4:]
+            else:
+                left += " && old_walk.rtte.ripas == " + this_ripas
+        if not hipas_all_equal:
+            left += " && old_walk.rtte.state == " + this_hipas
+        print("  assert(("+left+") ==> ("+right+"));")
+
+def all_equal(iterator):
+    return len(set(iterator)) == 1
+
+def print_dependency(dependency, cmds, enum_types):
+    ripas_types = enum_types["RmmRipas"]
+    hipas_types = enum_types["RmmRttEntryState"]
+    for d in dependency:
+        command = d[0]
+        ripas_list = d[1]
+        hipas_list = d[2]
+        new_ripas_list = d[3]
+        new_hipas_list = d[4]
+        cmd_name = command.lower()
+        fn_proof_name = cmd_name + "_rule"
+        fn_spec_name = command.lower() + "_spec"
+        cmd =  filter(lambda x: x[0].replace(" command", "").lower() == cmd_name, cmds)
+        cmd_spec = list(cmd)[0]
+        cmd_params = cmd_spec[1]
+        cmd_contexts = cmd_spec[2]
+        cmd_ret = cmd_spec[3]
+        context_walk = filter(lambda x: x[0] == "walk", cmd_contexts)
+        walk = list(context_walk)[0]
+        walk_type = walk[1]
+        
+        print("pub proof fn ", end='')
+        print(fn_proof_name+" (", end='')
+        print_param_ret(cmd_params, cmd_ret)
+        print(")")
+        print("    requires "+fn_spec_name+"(", end='')
+        print_param_ret_no_type(cmd_params, cmd_ret)
+        print("),")
+        print("{")
+        print("  let old_walk = ", end='')
+        print(walk_type.replace("(", "(old_s, ")+";")
+        print("  let new_walk = ", end='')
+        print(walk_type.replace("(", "(new_s, ")+";")
+            
+        # handle ripas
+        print_synthesized_old("ripas", ripas_list, ripas_types)
+        # handle hipas
+        print_synthesized_old("state", hipas_list, hipas_types)
+        # the case when there is only one row for this command
+        if len(ripas_list) == 1:
+            # handle new ripas
+            this_new_ripas = new_ripas_list[0]
+            print_synthesized_new("ripas", this_new_ripas)
+            # handle new hipas
+            this_new_hipas = new_hipas_list[0]
+            print_synthesized_new("state", this_new_hipas)
+        # the case when there are multiple rows for this command
+        else:
+            # check whether the column values (ripas/hipas) are equal
+            # if all values in the column are equal, handle it as the same with the one row case
+            new_ripas_all_equal = all_equal(new_ripas_list)
+            new_hipas_all_equal = all_equal(new_hipas_list)
+            ripas_all_equal = all_equal(ripas_list)
+            hipas_all_equal = all_equal(hipas_list)
+            # handle new ripas
+            if new_ripas_all_equal:
+                this_new_ripas = new_ripas_list[0]
+                print_synthesized_new("ripas", this_new_ripas)
+            else:
+                print_synthesized_new_multiple_rows("ripas", ripas_all_equal, hipas_all_equal, ripas_list, hipas_list, new_ripas_list)
+            # handle new hipas
+            if new_hipas_all_equal:
+                this_new_hipas = new_hipas_list[0]
+                print_synthesized_new("state", this_new_hipas)
+            else:
+                print_synthesized_new_multiple_rows("state", ripas_all_equal, hipas_all_equal, ripas_list, hipas_list, new_hipas_list)
+        print("}\n")
+
+def print_cmd_cond_funcs(cmd_cond_funcs):
+    is_hooking = False
+    for f in cmd_cond_funcs:
+        f_name = f[0]
+        f_params = f[1]
+        f_ret = process_func_type(f[2])
+        print("pub open spec fn ", end='')
+        print(f_name, end='')
+        print("(", end='')
+        for idx, param in enumerate(f_params):
+            param_name = process_param_name(param[0])
+            param_type = process_func_type(param[1])
+            # a custom hooking for return type (this is only relevant for `ResultEqual` function)
+            if param_type == "RmiCommandReturnCode":
+                param_type = "Result<(), RmiStatusCode>"
+                is_hooking = True
+            if idx != 0:
+                print(", ", end='')
+            print(param_name, end='')
+            print(": ", end='')
+            print(param_type, end='')
+        print(")", end='')
+        # inductive functions have no return type (e.g., RttsGranuleState)
+        if f_ret != "":
+            print(" -> ", end='')
+            print(f_ret, end='')
+        if is_hooking:
+            print(" {")
+            print("    result.is_Err() && result.get_Err_0() == status")
+            print("}\n")
+            is_hooking = False
+        else:
+            # semicolon with no function body indicates that it is an uninterpreted function
+            print(";\n")
+
+def print_cmds_raw(cmds):
+    for cmd in cmds:
+        name = cmd[0]
+        print(name)
+        print("--------------------------------------------")
+        params = cmd[1]
+        print(params)
+        contexts = cmd[2]
+        for entry in contexts:
+            print(entry[0]+": "+entry[1])
+        ret = cmd[3]
+        print(ret)
+        print("--------------------------------------------")
+        failure_conditions = cmd[4]
+        for cond in failure_conditions:
+            print("  pre: "+cond[0])
+            print("  post: "+cond[1])
+        print("--------------------------------------------")
+        success_conditions = cmd[5]
+        for cond in success_conditions:
+            if cond[0] != "":
+                print("  pre: "+cond[0])
+            print("  post: "+cond[1])
+        print("--------------------------------------------")
+        footprints = cmd[6]
+        for footprint in footprints:
+            footprint_id = footprint[0]
+            footprint_value = footprint[1]
+            print(footprint_id+": "+footprint_value)
+        print("============================================")
+
+def convert_cmds(cmds):
+    new_cmds = []
+    for cmd in cmds:
+        new_failure_conditions = []
+        new_success_conditions = []
+        name = cmd[0]
+        params = cmd[1]
+        contexts = cmd[2]
+        ret = cmd[3]
+        failure_conditions = cmd[4]
+        success_conditions = cmd[5]
+        footprint = cmd[6]
+        for cond in failure_conditions:
+            pre = cond[0]
+            post = cond[1]
+            if name == "RMI_VERSION command":
+                pre = cond[0].replace("VersionEqual", "VersionEqualRmi")
+                post = cond[1].replace("VersionEqual", "VersionEqualRmi")
+            if name == "RSI_VERSION command":
+                pre = cond[0].replace("VersionEqual", "VersionEqualRsi")
+                post = cond[1].replace("VersionEqual", "VersionEqualRsi")
+            new_failure_conditions.append((pre, post))
+        for cond in success_conditions:
+            pre = cond[0]
+            post = cond[1]
+            if name == "RMI_VERSION command":
+                pre = cond[0].replace("VersionEqual", "VersionEqualRmi")
+                post = cond[1].replace("VersionEqual", "VersionEqualRmi")
+            if name == "RSI_VERSION command":
+                pre = cond[0].replace("VersionEqual", "VersionEqualRsi")
+                post = cond[1].replace("VersionEqual", "VersionEqualRsi")
+            new_success_conditions.append((pre, post))
+        new_cmds.append((name, params, contexts, ret, new_failure_conditions, new_success_conditions, footprint))
+    return new_cmds
+
+def substitute_name_for_value(context_name, context_value, target_str):
+    new_str = target_str
+    context_name_len = len(context_name)
+    context_name_count = new_str.count(context_name)
+    start = 0
+    for i in range(context_name_count):
+        index = new_str.find(context_name, start)
+        front = new_str[:index]
+        back = new_str[index + context_name_len:]
+        # `.` indicates that the name is used as a field of a structure, 
+        #     thus should not be substituted
+        if len(front) > 0 and front[-1] == ".":
+            new_str = front + context_name + back
+        # `_` indicates that the name has not yet ended (e.g., `pdevs` in `num_pdevs`),
+        #     thus should not be substituted
+        elif len(front) > 0 and front[-1] == "_":
+            new_str = front + context_name + back
+        # `_` indicates that the name has not yet ended (e.g., `params` in `params_ptr`),
+        #     thus should not be substituted
+        elif len(back) > 0 and back[0] == "_":
+            new_str = front + context_name + back
+        # alphabet indicates that the name has not yet ended (e.g., `rec` in `s2ap_indirect`),
+        # thus should not be substituted
+        elif len(front) > 0 and front[-1].isalpha():
+            new_str = front + context_name + back
+        # alphabet indicates that the name has not yet ended (e.g., `rec` in `s2ap_indirect`),
+        # thus should not be substituted
+        elif len(back) > 0 and back[0].isalpha():
+            new_str = front + context_name + back
+        else:
+            new_str = front + context_value + back
+        start = index + 1
+    return new_str
+
+def substitute_contexts(contexts, pre, post):
+    for context in contexts:
+        context_name = context[0]
+        context_value = context[1] 
+        pre_context_count = pre.count(context_name)
+        post_context_count = post.count(context_name)
+        for i in range(pre_context_count):
+            pre = substitute_name_for_value(context_name, context_value, pre)
+        for i in range(post_context_count):
+            post = substitute_name_for_value(context_name, context_value, post)
+    return (pre, post)
+
+def attach_state(cmd_cond_funcs, pre, post):
+    for f in cmd_cond_funcs:
+        f_name = f[0]
+        f_params = f[1]
+        # this includes AuxEqual, AuxStateEqual, MpidrEqual, ResultEqual, and RttsStateEqual, ToBits64, ToAddress
+        if f_name.endswith("Equal") or f_name.endswith("Equal1") or f_name.startswith("To"):
+            continue
+        f_name_l = f_name + "("
+        # this is the mininum number of parameters (there is only s: S)
+        if len(f_params) == 1:
+            pre = pre.replace(f_name_l, f_name_l+"old_s")
+            post = post.replace(f_name_l, f_name_l+"new_s")
+        else:
+            pre = pre.replace(f_name_l, f_name_l+"old_s, ")
+            post = post.replace(f_name_l, f_name_l+"new_s, ")
+    # In a recent version, there is neither Rec nor Realm function
+    if not (target == "alp14" or target == "alp13" or target == "alp12" or target == "alp11"):
+        # Realm and CurrentRealm have the same suffix, so it needs a special handling
+        pre = pre.replace("CurrentRealm(old_s, ", "CurrentRealm(")
+        post = post.replace("CurrentRealm(new_s, ", "CurrentRealm(")
+        # Rec and CurrentRec have the same suffix, so it needs a special handling
+        pre = pre.replace("CurrentRec(old_s, ", "CurrentRec(")
+        post = post.replace("CurrentRec(new_s, ", "CurrentRec(")
+        # Rec and RimExtendRec have the same suffix, it so needs a special handling
+        pre = pre.replace("RimExtendRec(old_s, ", "RimExtendRec(")
+        post = post.replace("RimExtendRec(new_s, ", "RimExtendRec(")
+    return (pre, post)
+
+def process_pre_post(pre, post, contexts, cmd_cond_funcs):
+    pre, post = substitute_contexts(contexts, pre, post)
+    pre, post = attach_state(cmd_cond_funcs, pre, post)
+    # add state in RttWalk
+    pre = pre.replace("RttWalk_(", "RttWalk_(old_s,")
+    post = post.replace("RttWalk_(", "RttWalk_(new_s,")
+    return (pre,post)
+
+def print_success_result(ret_hooked, fn_name):
+    if ret_hooked:
+        print("result.is_Ok()", end='')
+    elif fn_name.startswith("rsi_"):
+        print("result == RSI_SUCCESS", end='')
+    elif fn_name.startswith("psci_"):
+        # psci_system_off and psci_system_reset do not have result
+        if fn_name != "psci_system_off_spec" and fn_name != "psci_system_reset_spec":
+            print("result == PSCI_SUCCESS", end='')
+    else:
+        raise ValueError("Unexpected case")
+
+def print_failure_result(ret_hooked, fn_name):
+    if ret_hooked:
+        print("result.is_Err()")
+    elif fn_name.startswith("rsi_"):
+        print("result != RSI_SUCCESS")
+    elif fn_name.startswith("psci_"):
+        print("result != PSCI_SUCCESS")
+    else:
+        raise ValueError("Unexpected case")
+
+def print_param_ret(params, returns):
+    ret_hooked = False
+    first_param = True
+    for param in params:
+        param_name = param[0]
+        param_type = param[1]
+        if param_name == "fid":
+            continue
+        elif first_param:
+            print(param_name + ": " + param_type, end='')
+            first_param = False
+        else:
+            print(", " + param_name + ": " + param_type, end='')
+    for ret in returns:
+        ret_name = ret[0]
+        ret_type = ret[1]
+        # return hooking for `RmiCommandReturnCode`
+        if ret_type == "RmiCommandReturnCode":
+            # we use the inner field of RmiCommandReturnCode, which is RmiStatusCode
+            ret_type = "Result<(), RmiStatusCode>"
+            ret_hooked = True
+
+        if first_param:
+            print(ret_name + ": " + ret_type, end='')
+            first_param = False
+        else:
+            print(", " + ret_name + ": " + ret_type, end='')
+    # the case when there is no input and output
+    # len(params) == 1 indicates that there is only `fid` for input
+    if len(params) == 1 and not returns:
+        print("old_s: S, new_s: S", end='')
+    else:
+        print(", old_s: S, new_s: S", end='')
+    return (ret_hooked)
+
+def print_param_ret_no_type(params, returns):
+    first_param = True
+    for param in params:
+        param_name = param[0]
+        if param_name == "fid":
+            continue
+        elif first_param:
+            print(param_name, end='')
+            first_param = False
+        else:
+            print(", " + param_name, end='')
+    for ret in returns:
+        ret_name = ret[0]
+        if first_param:
+            print(ret_name, end='')
+            first_param = False
+        else:
+            print(", " + ret_name, end='')
+    # the case when there is no input and output
+    # len(params) == 1 indicates that there is only `fid` for input
+    if len(params) == 1 and not returns:
+        print("old_s, new_s", end='')
+    else:
+        print(", old_s, new_s", end='')
+
+def print_cmds(cmds, cmd_cond_funcs):
+    for cmd in cmds:
+        fn_name = cmd[0].replace(" command", "").lower() + "_spec"
+        print("pub open spec fn "+fn_name+"(", end='')
+        params = cmd[1]
+        contexts = cmd[2]
+        returns = cmd[3]
+        failure_conditions = cmd[4]
+        success_conditions = cmd[5]
+        ret_hooked = print_param_ret(params, returns)
+        print(") -> bool {")
+        for idx, cond in enumerate(failure_conditions):
+            print("  ", end='')
+            if idx != 0:
+                print("&& ", end='')
+            pre = cond[0]
+            post = cond[1]
+            pre, post = process_pre_post(pre, post, contexts, cmd_cond_funcs)
+            print("(", end='')
+            print(pre, end='')
+            print(" ==> ", end='')
+            print(post, end='')
+            print(")")
+            if is_coverage:
+                if "):0" in pre or "):0" in post:
+                    print("[EXCLUDED]")
+        for idx, cond in enumerate(success_conditions):
+            print("  ", end='')
+            # if failure conditions were not empty
+            if idx != 0 or failure_conditions:
+                print("&& ", end='')
+            pre = cond[0]
+            post = cond[1]
+            pre, post = process_pre_post(pre, post, contexts, cmd_cond_funcs)
+            print("(", end='')
+            print_success_result(ret_hooked, fn_name)
+            if pre != "":
+                print(" && ", end='')
+                print(pre, end='')
+            if fn_name != "psci_system_off_spec" and fn_name != "psci_system_reset_spec":
+                print(" ==> ", end='')
+            print(post, end='')
+            print(")")
+            if is_coverage:
+                if "):0" in pre or "):0" in post:
+                    print("[EXCLUDED]")
+        # synthesize a condition from failure conditions (for success)
+        for idx, cond in enumerate(failure_conditions):
+            print("  ", end='')
+            if idx == 0:
+                print("&& ((", end='')
+            else:
+                print("     ", end='')
+            pre = cond[0]
+            post = cond[1]
+            pre, post = process_pre_post(pre, post, contexts, cmd_cond_funcs)
+            if pre.startswith("!"):
+                pre = pre[1:]
+            else:
+                pre = "!(" + pre + ")"
+            print(pre, end='')
+            if idx == len(failure_conditions) - 1:
+                print(")")
+                print("    ==> ", end='')
+                print_success_result(ret_hooked, fn_name)
+                print(")")
+            else:
+                print(" &&")
+        # synthesize a condition from success conditions (1)
+        for idx, cond in enumerate(success_conditions):
+            if fn_name == "psci_system_off_spec" or fn_name == "psci_system_reset_spec":
+                break
+            pre = cond[0]
+            post = cond[1]
+            pre, post = process_pre_post(pre, post, contexts, cmd_cond_funcs)
+            # TODO: consider && case later
+            if "&&" not in post and "==" in post:
+                post_pieces = post.split("==")
+                left = post_pieces[0].strip()
+                right = post_pieces[1].strip()
+                if left.startswith("("):
+                    left = left[1:]
+                    if right.endswith(")"):
+                        right = right[:-1]
+                if "new_s" in left:
+                    right = left.replace("new_s", "old_s")
+                    print("  && (", end='')
+                    print_failure_result(ret_hooked, fn_name)
+                    print("    ==> ", end='')
+                    print(left, end='')
+                    print(" == ", end='')
+                    print(right, end='')
+                    print(")")
+        # synthesize a condition from success conditions (2)
+        ripas_used = False
+        state_used = False
+        ripas_left = ""
+        ripas_right = ""
+        state_left = ""
+        state_right = ""
+        for idx, cond in enumerate(success_conditions):
+            pre = cond[0]
+            post = cond[1]
+            pre, post = process_pre_post(pre, post, contexts, cmd_cond_funcs)
+            # TODO: consider && case later
+            if "&&" not in post and "==" in post:
+                post_pieces = post.split("==")
+                left = post_pieces[0].strip()
+                right = post_pieces[1].strip()
+                if left.endswith("rtte.ripas"):
+                    ripas_used = True
+                    ripas_left = left
+                    ripas_right = right
+                if left.endswith("rtte.state"):
+                    state_used = True
+                    state_left = left
+                    state_right = right
+        # it seems that there is no this case, so we do not handle this case yet
+        if ripas_used and not state_used:
+            raise ValueError("Unexpected case")
+        if state_used and not ripas_used:
+            print ("  && (", end='')
+            new_ripas = ""
+            new_ripas = state_left.replace("rtte.state", "rtte.ripas")
+            old_ripas = new_ripas.replace("new_s", "old_s")
+            print(new_ripas, end='')
+            print(" == ", end='')
+            print(old_ripas, end='')
+            print(")")
+        # synthesize a condition from success conditions (3)
+        left_set = set()
+        for idx, cond in enumerate(success_conditions):
+            pre = cond[0]
+            post = cond[1]
+            pre, post = process_pre_post(pre, post, contexts, cmd_cond_funcs)
+            has_pre = False
+            is_duplicate = False
+            if pre != "":
+                # TODO: consider && and || cases later
+                if "&&" not in pre and "||" not in pre and "&&" not in post and "||" not in post and "new_s" in post:
+                    # TODO: consider other cases later
+                    if "==" in pre and "==" in post:
+                        has_pre = True
+                        pre_pieces = pre.split("==")
+                        left = pre_pieces[0].strip()
+                        right = pre_pieces[1].strip()
+                        if left in left_set:
+                            is_duplicate = True
+                        else:
+                            left_set.add(left)
+            if has_pre and not is_duplicate:
+                post_pieces = post.split("==")
+                left = post_pieces[0].strip()
+                right = post_pieces[1].strip()
+                old_s = ""
+                new_s = ""
+                if "new_s" in left:
+                    old_s = left.replace("new_s", "old_s")
+                    new_s = left
+                elif "new_s" in right:
+                    continue
+                else:
+                    raise ValueError("Unexpected case")
+                print("  && (!(", end='')
+                print_success_result(ret_hooked, fn_name)
+                print(" && (", end='')
+                print(pre, end='')
+                print(")) ==> ", end='')
+                print(new_s + " == " + old_s, end='')
+                print(")")
+        # the case when both of failure and success conditions are empty
+        if not failure_conditions and not success_conditions:
+            if is_coverage:
+                print("  true[EXCLUDED]")
+            else:
+                print("  true")
+        print("}\n")
+
+def detect_dangling_output(cmds):
+    print("[Dangling output result]")
+    for cmd in cmds:
+        name = cmd[0]
+        contexts = cmd[2]
+        outputs = cmd[3]
+        failure_conditions = cmd[4]
+        success_conditions = cmd[5]
+        dangling_outputs = []
+        for output in outputs:
+            found = False
+            output_name = output[0]
+            output_type = output[1]
+            if "ReturnCode" in output_type:
+                continue
+            else:
+                for failure_condition in failure_conditions:
+                    failure_pre = failure_condition[0]
+                    failure_post = failure_condition[1]
+                    if output_name in failure_post:
+                        found = True
+                        break
+                
+                for success_condition in success_conditions:
+                    success_pre = success_condition[0]
+                    success_post = success_condition[1]
+                    if output_name in success_post:
+                        found = True
+                        break
+            if found == False:
+                dangling_outputs.append(output_name)
+        if len(dangling_outputs) > 0:
+            print("--------------------------------------------")
+            print(name)
+            for d_output in dangling_outputs:
+                print(d_output)
+
+def footprint_checks_inner(dangling_success, this_str, outputs, footprints):
+    is_output = False
+    for output in outputs:
+        output_name = output[0].strip()
+        if output_name == this_str:
+            is_output = True
+            break
+    # output values do not have to be in footprint
+    if not is_output:
+        is_footprint = False
+        for footprint in footprints:
+            footprint_value = footprint[1].strip()
+            if footprint_value in this_str:
+                is_footprint = True
+                break
+            if this_str.startswith("walk.rtte."):
+                # there is a high chance that RttEntry(walk.rtt_addr, ...) and walk.rtte 
+                # indicates the same object of RmmRttEntry type
+                if footprint_value.startswith("RttEntry(walk.rtt_addr"):
+                    is_footprint = True
+                    break
+                # a newer representation of RttEntry
+                if footprint_value.startswith("RttEntryAt(RttAt(walk.rtt_addr"):
+                    is_footprint = True
+                    break
+            if this_str.startswith("walk_aux.rtte."):
+                # there is a high chance that RttEntry(walk_aux.rtt_addr, ...) and walk_aux.rtte 
+                # indicates the same object of RmmRttEntry type
+                if footprint_value.startswith("RttEntry(walk_aux.rtt_addr"):
+                    is_footprint = True
+                    break
+            # I_RWQMJ If an RMM command changes the state of a Granule then 
+            #         the footprint typically does not include all attributes 
+            #         of the object which is created or destroyed.
+            if ((footprint_value.startswith("Granule(") or footprint_value.startswith("GranuleAt("))
+                and footprint_value.endswith(").state")):
+                is_footprint = True
+                break
+        if not is_footprint:
+            dangling_success.append(this_str)
+    return dangling_success
+
+def footprint_checks(cmds):
+    print("\n[Footprint check result]")
+    for cmd in cmds:
+        cmd_name = cmd[0]
+        contexts = cmd[2]
+        outputs = cmd[3]
+        failure_conditions = cmd[4]
+        success_conditions = cmd[5]
+        footprints = cmd[6]
+        dangling_success = []
+        for success_condition in success_conditions:
+            success_pre = success_condition[0]
+            success_post = success_condition[1]
+            # TODO: consider && later
+            if "&&" not in success_post:
+                if "==" in success_post:
+                    equal_ops = success_post.split("==")
+                    equal_left = equal_ops[0].strip()
+                    equal_right = equal_ops[1].strip()
+                    dangling_success = footprint_checks_inner(dangling_success, equal_left, outputs, footprints)
+                if success_post.startswith("Equal("):
+                    tmp = success_post.replace("Equal(", "")
+                    comma_offset = tmp.find(",")
+                    equal_left = tmp[:comma_offset]
+                    dangling_success = footprint_checks_inner(dangling_success, equal_left, outputs, footprints)
+        if len(dangling_success) > 0:
+            print("--------------------------------------------")
+            print(cmd_name)
+            for d_success in dangling_success:
+                print(d_success)
+
+# Handle PDF input type
+if input_type == "pdf":
+    # Check if pdftotext is available
+    if not check_pdftotext_available():
+        print("Error: pdftotext is not available.", file=sys.stderr)
+        print("Please install poppler-utils: sudo apt-get install poppler-utils", file=sys.stderr)
+        sys.exit(1)
+    
+    if target.startswith("alp"):
+        pdf_file = "DEN0137_1.1-"+ target + "_rmm-arch_external.pdf"
+    else:
+        pdf_file = "DEN0137_1.0-"+ target + "_rmm-arch_external.pdf"
+
+    # Validate PDF file exists
+    if not os.path.exists(pdf_file):
+        print(f"Error: PDF file '{pdf_file}' does not exist.", file=sys.stderr)
+        sys.exit(1)
+    
+    # Create temporary text file for PDF conversion
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as temp_txt:
+        temp_txt_path = temp_txt.name
+    
+    # Convert PDF to text
+    if not convert_pdf_to_text(pdf_file, temp_txt_path):
+        # Clean up temporary file on failure
+        os.unlink(temp_txt_path)
+        sys.exit(1)
+    
+    # Use the converted text file as target
+    target_file = temp_txt_path
+else:
+    # Handle text input type
+    target_file = target + ".txt"
+    if not os.path.exists(target_file):
+        print(f"Error: Text file '{target_file}' does not exist.", file=sys.stderr)
+        sys.exit(1)
+
+# This preprocesses the document by removing contents, headers, and footers.
+with open(target_file, 'r') as file, open('tmp.txt', 'w') as f:
+    is_header = False
+    is_link = False
+    is_contents = False
+    is_release_info = False
+
+    draft_pattern = re.compile("\\s+T\\s+")
+    draft_pattern2 = re.compile("\\s+AF\\s+")
+    draft_pattern3 = re.compile("\\s+R\\s+")
+    draft_pattern4 = re.compile("\\s+D\\s+")
+    # Read each line in the file
+    for raw_line in file:
+        line = raw_line.strip()
+
+        # remove DRAF'T' in the middle of the contents (e.g., section title) 
+        # which appears in alpha versions
+        if raw_line.endswith(" T\n"):
+            raw_line = raw_line[:-2].rstrip() + "\n"
+        # remove DRAFT which appears in alpha versions
+        draft_matched = draft_pattern.match(raw_line)
+        draft_matched2 = draft_pattern2.match(raw_line)
+        draft_matched3 = draft_pattern3.match(raw_line)
+        draft_matched4 = draft_pattern4.match(raw_line)
+        if draft_matched or draft_matched2 or draft_matched3 or draft_matched4:
+            continue
+        # remove empty lines
+        if line == "":
+            continue
+        if raw_line == "\n":
+            continue
+        # remove headers
+        if "Chapter" in line and "." in line:
+            is_header = True
+            continue
+        if is_header == True:
+            is_header = False
+            continue
+        # remove footers
+        if "Copyright" in line:
+            continue
+        # TODO: replace the below as a version variable
+        if "1.0-eac5" in line or "1.0-rel0" in line or "1.1-alp11" in line or "1.1-alp12" in line or "1.1-alp13" in line or "1.1-alp14" in line:
+            continue
+        # remove inner links
+        if "See also:" in line:
+            is_link = True
+            continue
+        if "architecture:" in line:
+            is_link = True
+            continue
+        if is_link == True:
+            if "•" in line:
+                continue
+            else:
+                is_link = False
+        # remove release information and license
+        if "Release information" in line:
+            next_line = next(file)
+            # - indicates date sybol
+            if "-20" in next_line: 
+                is_release_info = True
+                continue
+        if is_release_info == True:
+            # the end symbol for license
+            if "England CB1 9NJ" in line:
+                is_release_info = False
+            continue
+        # remove contents
+        if "Contents" in line:
+            next_line = next(file)
+            if "Realm Management Monitor specification" in next_line:
+                is_contents = True
+                continue
+        if is_contents == True:
+            if "Glossary" in line:
+                is_contents = False
+            continue
+        # remove exceptional figures
+        # note that `Figure B1.1` is the only exception which has the same signature with sections
+        if "Figure B1.1" in line:
+            continue
+        f.write(raw_line)
+
+with open('tmp.txt', 'r') as file:
+    lines = file.read()
+    parts = re.split("Part [A-Z]", lines)
+    # the below regex includes the name of part and empty space, 
+    # yet seems to have a side effect
+    #parts = re.split("Part [A-Z]\\s+[a-zA-Z]+\\s+", lines)
+
+    enum_types = {}
+    struct_types = {}
+    cmd_cond_funcs = []
+    cmds = []
+    dependency = []
+    for part in parts:
+        chapters = re.split("Chapter [A-Z]\\d", part)
+        for chapter in chapters:
+            # note that the signatures of sections are slightly different from
+            # those of figures with the existence of colon (e.g., Figure A1.1:)
+            sections = re.split("[A-Z]\\d\\.\\d+\\s+", chapter)
+            for section in sections:
+                section_lines = section.splitlines()
+                sub_sections = re.split("[A-Z]\\d\\.\\d+\\.\\d+\\s+", section)
+                if "Types" in part or "Constants and types" in part:
+                    collect_types(section, section_lines, enum_types, struct_types)
+                elif "Interface" in part and "Command condition functions" in chapter:
+                    collect_cmd_cond_funcs(section_lines, cmd_cond_funcs)
+                elif "Interface" in part and (("Realm Management Interface" in chapter and "RMI commands" in section) or
+                                              ("Realm Services Interface" in chapter and "RSI commands" in section) or
+                                              ("Power State Control Interface" in chapter and "PSCI commands" in section)):
+                    for sub_section in sub_sections:
+                        sub_section_lines = sub_section.splitlines()
+                        sub_section_title = sub_section_lines[0]
+                        # this helps to remove RMI commands section which is of no interest
+                        if sub_section_title.endswith(' command'):
+                            input_values = []
+                            contexts = []
+                            output_values = []
+                            failure_conditions = []
+                            success_conditions = []
+                            footprints = []
+                            subsub_sections = re.split("[A-Z]\\d\\.\\d+\\.\\d+\\.\\d+\\s+", sub_section)
+                            for subsub_section in subsub_sections:
+                                subsub_section_lines = subsub_section.splitlines()
+                                subsub_section_title = subsub_section_lines[0]
+                                if subsub_section_title == "Interface":
+                                    collect_interface(subsub_section, input_values, contexts, output_values)
+                                elif subsub_section_title == "Failure conditions":
+                                    collect_failure_conds(failure_conditions, subsub_section)
+                                elif subsub_section_title == "Success conditions":
+                                    collect_success_conds(success_conditions, subsub_section)
+                                elif subsub_section_title == "Footprint":
+                                    collect_footprint(footprints, subsub_section)
+                            # conversion is not necessary for rule-based checks
+                            if conversion_is_needed:
+                                contexts = convert_context(contexts)
+                                contexts = traverse_context_for_substitution(contexts)
+                                failure_conditions = convert_failure_conditions(failure_conditions)
+                                success_conditions = convert_success_conditions(success_conditions)
+                            cmds.append((sub_section_title, input_values, contexts, output_values, failure_conditions, success_conditions, footprints))
+                elif "Architecture" in part:
+                    for sub_section in sub_sections:
+                        sub_section_lines = sub_section.splitlines()
+                        sub_section_title = sub_section_lines[0]
+                        if "Dependency" in sub_section_title and not no_dependency:
+                            collect_dependency(sub_section, sub_section_lines, dependency)
+                            dependency = coalesce_dependency(dependency)
+                        subsub_sections = re.split("[A-Z]\\d\\.\\d+\\.\\d+\\.\\d+\\s+", sub_section)
+                        if "RMI types" in section or "RSI types" in section or "PSCI types" in section:
+                            collect_types(sub_section, sub_section_lines, enum_types, struct_types)
+
+    # conversion is not necessary for rule-based checks
+    if conversion_is_needed:
+        cmd_cond_funcs = convert_cmd_cond_funcs(cmd_cond_funcs)
+        cmds = convert_cmds(cmds)
+        enum_types = convert_enum(enum_types)
+        struct_types = convert_struct(struct_types)
+    if mode == "reason":
+        print_preamble(enum_types)
+        print_enum(enum_types)
+        print_struct(struct_types)
+        print_cmd_cond_funcs(cmd_cond_funcs)
+        print_cmds(cmds, cmd_cond_funcs)
+        if not no_dependency:
+            dependency = preprocess_dependency(dependency, enum_types)
+            print_dependency(dependency, cmds, enum_types)
+        print_postamble()
+    elif mode == "rule":
+        detect_dangling_output(cmds)
+        footprint_checks(cmds)
+    elif mode == "raw":
+        if not no_dependency:
+            dependency = preprocess_dependency(dependency, enum_types)
+            print_dependency_raw(dependency)
+        print_cmds_raw(cmds)
