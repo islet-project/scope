@@ -19,23 +19,37 @@ The `scope` is a shorthand for `spectroscope`. The name reflects the way a spect
 
 ### Prerequisites
 
+**1. Install pdftotext**
 ```bash
-# Install Python dependencies (if any)
-# The scope uses only standard library modules
-
-# Install PDF processing dependencies
 sudo apt-get install libpoppler-dev
-
-# Install Verus [v0.2025.01.11](https://github.com/verus-lang/verus/commit/bec74a67d9281a4f51a7e1855760c5d16d8f63ff)
-# Follow its [install instructions](https://github.com/verus-lang/verus/blob/main/INSTALL.md)
 ```
+
+**2. Install Verus**
+
+Currently, version [0.2025.01.11](https://github.com/verus-lang/verus/commit/bec74a67d9281a4f51a7e1855760c5d16d8f63ff) should be used. 
+Please follow its [installation instructions](https://github.com/verus-lang/verus/blob/main/INSTALL.md).
+```bash
+git clone https://github.com/verus-lang/verus.git
+cd verus
+git reset --hard bec74a67d9281a4f51a7e1855760c5d16d8f63ff
+cd ./source
+./tools/get-z3.sh
+source ../tools/activate
+vargo build --release
+```
+
+**3. Prepare the RMM specification**
+
+Download the PDF files using the following links ([1.0-eac5](https://developer.arm.com/documentation/den0137/1-0eac5/),
+[1.0-rel0](https://developer.arm.com/documentation/den0137/1-0rel0/)). 
+Download the zip files using the following links ([1.1-alp11](https://developer.arm.com/-/cdn-downloads/permalink/Architectures/Armv9/DEN0137_1.1-alp11.zip),
+[1.1-alp12](https://developer.arm.com/-/cdn-downloads/permalink/Architectures/Armv9/DEN0137_1.1-alp12.zip))
+and extract the PDF files from them. 
+Ensure that the PDF files are placed in the same directory as the `scope` script.
 
 ### Quick Start
 
 ```bash
-# Make the scope executable
-chmod +x scope
-
 # Run with default settings (EAC5 text file, reasoning mode)
 ./scope
 
