@@ -27,7 +27,9 @@ cp {eac5, rel0}.rs ~/
 (install verus)
 cd ~
 git clone https://github.com/verus-lang/verus.git
-cd ./verus/source
+cd verus
+git reset --hard bec74a67d9281a4f51a7e1855760c5d16d8f63ff
+cd ./source
 ./tools/get-z3.sh (on Unix/macOs) 
 source ../tools/activate
 vargo build --release

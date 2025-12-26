@@ -24,10 +24,10 @@ The `scope` is a shorthand for `spectroscope`. The name reflects the way a spect
 # The scope uses only standard library modules
 
 # Install PDF processing dependencies
-sudo apt-get install poppler-utils
-
-# For development (optional)
 sudo apt-get install libpoppler-dev
+
+# Install Verus [v0.2025.01.11](https://github.com/verus-lang/verus/commit/bec74a67d9281a4f51a7e1855760c5d16d8f63ff)
+# Follow its [install instructions](https://github.com/verus-lang/verus/blob/main/INSTALL.md)
 ```
 
 ### Quick Start
