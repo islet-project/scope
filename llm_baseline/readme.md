@@ -1,5 +1,21 @@
 ## LLM Agent Baseline
 
+### Prerequisites
+
+**1. Install dependencies**
+```bash
+sudo apt install python3-pypdf
+sudo apt install python3-networkx
+sudo apt install python3-openai
+```
+
+**2. Prepare the RMM specification**
+```bash
+// rename the target PDF into cca.pdf 
+cp DEN0137_1.0-rel0_rmm-arch_external.pdf ./llm_baseline/cca.pdf
+```
+
+### About the tool
 
 This is the baseline used to evaluate the LLM model's ability to find inconsistency errors in specs. The LLM agent contains two steps:
 
