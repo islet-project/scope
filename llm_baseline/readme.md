@@ -31,7 +31,8 @@ With the ranges of table of contents, the agent autotmatically parse the documen
 
 Run the command:
 
-        python3 main.py cca.pdf 8 15
+        python3 main.py cca.pdf 9 16
 
+Note that 9 16 is the starting, ending page number for the table of contents in 1.0-rel0, which is different from each document.
 
 The sample output is in [llm_output.txt](./llm_output.txt)

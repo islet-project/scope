@@ -110,7 +110,7 @@ def extract_hyperlinks_and_text(pdf_path='cca.pdf', start_page=8, end_page=15):
     print(s)
     print(len(s))
 
-    return sections
+    return s
 
 
 def extract_text_in_rect(page, rect):
