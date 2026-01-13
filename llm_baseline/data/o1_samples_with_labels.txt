@@ -1,0 +1,406 @@
+**3. Contradiction Regarding Realm Destruction When Live**
+
+**Sections Involved:**
+- **A2.1.4 Realm liveness**
+- **A2.1.5.2 State transitions**
+
+**Description:**
+
+- In **Section A2.1.4**, it is stated:
+  > *"If a Realm is live, it cannot be destroyed."*
+- A Realm is considered *live* if it owns any granules other than the Realm Descriptor (RD) and starting level Realm Translation Tables (RTTs).
+
+- However, in **Section A2.1.5.2**, the state transition table shows:
+  ```text
+  From state    To state        Events
+  REALM_ACTIVE  NULL            RMI_REALM_DESTROY
+  ```
+- This indicates that a Realm in the `REALM_ACTIVE` state (which is typically live) can be destroyed using `RMI_REALM_DESTROY`.
+
+**Contradiction:**
+
+- The contradiction lies between the assertion that a live Realm cannot be destroyed and the state transition table permitting destruction from the `REALM_ACTIVE` state.
+- Unless there is an implicit assumption (not stated in the provided sections) that `RMI_REALM_DESTROY` will fail if the Realm is live, this presents conflicting information.
+
+**Implications:**
+
+- This inconsistency may cause confusion about whether it is permissible to destroy a live Realm.
+- Without clarification, implementers might incorrectly allow the destruction of live Realms, potentially violating security or resource management protocols.
+--------------------------------------------------------------------------------------------------------------------
+[FP]
+RMI_REALM_DESTROY checks a target realm's liveness using `RealmIsLive(rd)` in the failure conditions (see `realm_live` in B4.3.10.2). 
+If the target realm is live, the command would have failed. 
+Thus, it does not contradict the statement that "if a Realm is live, it cannot be destroyed".
+====================================================================================================================
+
+**Statements Involved:**
+
+- **DTJCGH**: *"A REC exit is return from an execution of `RMI_REC_ENTER` which caused a REC entry."*
+
+- **IHMSQM**: *"An implementation is permitted to return `RMI_SUCCESS` from `RMI_REC_ENTER` without performing a REC entry. For example, on observing a pending interrupt, the implementation can generate a REC exit due to IRQ without entering the target REC."*
+
+**Explanation:**
+
+- **According to DTJCGH**, a **REC exit** is specifically defined as a return from an execution of `RMI_REC_ENTER` **which caused a REC entry**. This implies that a REC exit can only occur if there was a preceding REC entry.
+
+- **However, IHMSQM states** that an implementation can return `RMI_SUCCESS` from `RMI_REC_ENTER` **without performing a REC entry**, and can generate a REC exit due to an interrupt (IRQ) **without entering the target REC**.
+
+**Contradiction:**
+
+- The contradiction arises because **IHMSQM allows for a REC exit without a REC entry**, which directly conflicts with **DTJCGH's definition** that a REC exit must follow a REC entry.
+
+**Implication:**
+
+- This inconsistency could lead to confusion about whether a REC exit is permitted without a prior REC entry. The definition needs clarification to resolve whether REC exits can occur independently of REC entries.
+
+--------------------------------------------------------------------------------------------------------------------
+[TP]
+one statement (D_TJCGH) says that REC exit always involves RMI_REC_ENTER and a REC entry while
+the other statement (I_HMSQM) says that REC exits can only involve RMI_REC_ENTER without a REC entry.
+====================================================================================================================
+
+### **Contradiction 2: Exceptions to R-EL2 and Realm Exits**
+
+**Statements Involved:**
+
+- **ISMPWB**: *"When executing in a Realm, an exception taken to R-EL2 or EL3 results in a Realm exit."*
+
+- **Diagram Paths d and e**:
+
+  - **Path d**: *"The exception is taken to EL2. The RMM executes an SMC instruction, requesting the Monitor to perform an operation, then returns control to the Realm."*
+
+  - **Path e**: *"The exception is taken to EL2. The RMM handles the exception and returns control to the Realm."*
+
+**Explanation:**
+
+- **According to ISMPWB**, any exception taken to R-EL2 (Realm EL2) or EL3 while executing in a Realm **results in a Realm exit**, meaning control transitions away from the Realm (as per **DRMGWJ**: *"A Realm exit is a transition of control from a Realm."*).
+
+- **In Diagram Path d and e**, exceptions are taken to EL2, but after handling:
+
+  - **In Path d**, the RMM (Realm Management Monitor) performs an operation via an SMC (Secure Monitor Call) instruction and then **returns control to the Realm**.
+
+  - **In Path e**, the RMM handles the exception internally and then **returns control to the Realm**.
+
+**Contradiction:**
+
+- The contradiction lies in the fact that **ISMPWB states that any exception to R-EL2 results in a Realm exit**, but **Paths d and e depict scenarios where control returns to the Realm after an exception to EL2**, indicating that a Realm exit does **not necessarily occur** in these cases.
+
+**Implication:**
+
+- This discrepancy creates ambiguity about the behavior of exceptions to R-EL2:
+
+  - **Does every exception to R-EL2 cause a Realm exit**, as per ISMPWB?
+
+  - **Or can exceptions to R-EL2 be handled and return control to the Realm without a Realm exit**, as depicted in Paths d and e?
+
+- Clarification is needed to determine whether exceptions to R-EL2 always result in Realm exits or if there are cases where control can return to the Realm without exiting.
+
+---------------------------------------------------------------------------------------------------------------------
+[FP]
+Even if a Realm exit involves returning control to the Realm, it is just one of the scenarios of a Realm exit followed by a Realm entry. 
+A Realm entry does not invalidate its preceding Realm exit.
+====================================================================================================================
+
+### **Contradiction 4: Storage of RecRun Object**
+
+**Statements Involved:**
+
+- **IVCCFV**: *"A RecRun object is stored in Non-secure memory."*
+
+- **General Understanding**: The **RecRun object** is used to pass values between the RMM and the Host during REC entry and exit.
+
+**Potential Contradiction:**
+
+- Storing the **RecRun object in Non-secure memory** might contradict security principles if the data is sensitive and should be protected from Non-secure access.
+
+**Explanation:**
+
+- If the RecRun object contains sensitive information related to the Realm execution context, storing it in Non-secure memory could pose a security risk.
+
+**Implication:**
+
+- This raises a concern about whether it is appropriate to store the RecRun object in Non-secure memory. The documentation should clarify what data is contained within the RecRun object and justify its storage location to ensure it does not compromise security.
+
+### **Conclusion**
+
+The contradictions identified above highlight areas in the document that require clarification to ensure consistent understanding of the Realm exception model. Addressing these contradictions will help developers and implementers correctly interpret the specifications and maintain system security and integrity.
+
+---------------------------------------------------------------------------------------------------------------------
+[FP]
+Even though it is true that a RecRun object is stored in Non-secure memory, it is natural to put an object in the Non-secure memory for the communication purpose.
+LLM's answer says that the contents of RecRun object should be clear. However, the contents of RecRun object 
+can be found in B4.4.20 RmiRecRun type which contains RmiRecEnter and RmiRecExit.
+====================================================================================================================
+
+**Section A4.3.3: General purpose registers saved on REC exit**
+
+- **Statement:**  
+  *RMZGPT* On REC exit for any reason which is neither REC exit due to Host call nor REC exit due to PSCI, `exit.gprs` is zero.
+
+**Section A4.3.4.3: REC exit due to Data Abort**
+
+- **Statement:**  
+  *RFFNHW* On REC exit due to Emulatable Data Abort, if the Realm memory access was a write, `exit.gprs[0]` contains the value of the register indicated by `ESR_EL2.ISS.SRT` at the time of the Realm exit.
+
+**Explanation of Contradiction:**
+
+- **Conflict:** The first statement asserts that for any REC exit that is not due to Host call or PSCI, `exit.gprs` should be zero.
+- **Exception:** However, the second statement specifies that during a REC exit due to an Emulatable Data Abort (which is neither a Host call nor PSCI exit), `exit.gprs[0]` contains a valid register value.
+- **Conclusion:** This indicates a contradiction because `exit.gprs` is not zero in the case of an Emulatable Data Abort, conflicting with the assertion in A4.3.3.
+
+--------------------------------------------------------------------------------------------------------------------
+[TP]
+RMZGPT contradicts RFFNHW.
+====================================================================================================================
+
+**3. Potential Confusion Regarding REC State Transitions and Granule States**
+
+**Location:**
+
+- **Section A2.3.4.2 State transitions**
+  - Page **39**
+- **Section B4.3.13 RMI_REC_DESTROY command**
+  - Page **179**
+
+**Details:**
+
+- In **Section A2.3.4.2**, the REC state transitions include a transition to a pseudo-state `NULL` upon destruction:
+
+  ```text
+  From state   To state    Events
+  REC_READY    NULL        RMI_REC_DESTROY
+  ```
+  
+- The diagram in **Figure A2.3** supports this transition to `NULL`.
+
+- In **Section B4.3.13**, upon executing `RMI_REC_DESTROY`, the REC's granule state is set to `DELEGATED`:
+
+  ```text
+  B4.3.13.3 Success conditions
+
+  ID                 Condition
+  rec_gran_state     Granule(rec_ptr).state == DELEGATED
+  ```
+
+**Contradiction Explanation:**
+
+- There's a potential inconsistency between the conceptual `NULL` state and the granule state `DELEGATED`.
+- While the REC logically transitions to a non-existent or `NULL` state (as per the state diagram), the physical granule state becomes `DELEGATED`.
+
+**Impact:**
+
+- This might cause confusion about the REC's actual state post-destruction.
+- Developers may misinterpret the REC's availability or attempt to reuse it incorrectly, leading to errors.
+
+**Suggested Clarification:**
+
+- Explicitly state in **Section A2.3.4.2** that the transition to `NULL` corresponds to the granule state being set to `DELEGATED`.
+- Reconcile the terminology to ensure consistency between logical state transitions and granule states.
+
+--------------------------------------------------------------------------------------------------------------------
+[FP]
+NULL state indicates Rec's state field is unavailable for the reason that Rec object does not exist, 
+and the granule's transition from Rec to DELEGATED does not contradict it, as the transition means that the object has been successfuly destroyed and thus is unavailable.
+Also, `DELEGATED` is only relevant for a granule's state, not a field like Rec's state.
+====================================================================================================================
+
+**4. Inconsistency in Measurement Inclusion of `mpidr` during REC Creation**
+
+**Location:**
+
+- **Section B4.3.12 RMI_REC_CREATE command**
+  - Pages **175-177**
+
+- **Section B4.3.12.4 RMI_REC_CREATE extension of RIM**
+  - Page **177**
+
+- **Section C1.12 RmmMeasurementDescriptorRec type**
+  - Page **272**
+
+**Details:**
+
+- During REC creation, the measurement of the REC (which affects the Realm's Initial Measurement, or RIM) includes only certain REC parameters:
+
+  **From B4.3.12.4:**
+
+  ```text
+  2. Copy the following attributes from the Host-provided RmiRecParams data structure into the measured REC parameters data structure:
+    • gprs
+    • pc
+    • flags
+  ```
+
+- The `mpidr` (Multiprocessor Affinity Register) value is **not** included in the measurement.
+
+- However, the `mpidr` is a crucial attribute that identifies the VPE (Virtual Processing Element) associated with the REC:
+
+  **From A2.3.2 REC attributes:**
+
+  ```text
+  IFPJDL The mpidr attribute of a REC is a value which can be used to identify the VPE associated with the REC.
+  ```
+
+**Contradiction Explanation:**
+
+- There's an inconsistency in not including `mpidr` in the measurement when it's an essential attribute of the REC.
+- Excluding `mpidr` from the measurement could lead to scenarios where two RECs with different `mpidr` values (i.e., associated with different VPEs) might still result in the same measurement, potentially violating the uniqueness or integrity of the Realm's measurement.
+
+**Impact:**
+
+- This omission could lead to security concerns, as the Realm's measurement might not accurately reflect the actual configuration of the Realm, particularly regarding which VPEs are associated with its RECs.
+- Attestation processes relying on the measurement might be unable to detect certain configuration changes.
+
+--------------------------------------------------------------------------------------------------------------------
+[FP]
+This is not a defect, but rather this is how the RMM Specification intends for software to be designed.
+====================================================================================================================
+
+### **2. Contradiction Regarding Granule Content Wiping During Undelegation**
+
+#### **Description of the Contradiction:**
+
+- **Flow D1.1.2 (Granule Undelegation Flow):**
+  - The flow diagram and accompanying description mention that upon undelegation, the RMM performs cache maintenance but does **not mention wiping** the Granule's contents.
+  - Step in Flow: "Perform cache maintenance" after updating the GPT entry.
+
+- **Command Definition in B4.3.6 `RMI_GRANULE_UNDELEGATE`:**
+  - **Success Conditions:** Explicitly states that "Contents of target Granule are wiped."
+  - This implies that the Granule's content should be zeroed out during the undelegation process.
+
+#### **Implications:**
+
+- **Data Remanence Risk:**
+  - If the Granule's content is not wiped during undelegation, sensitive information might remain, potentially exposing data when the Granule is reallocated.
+- **Inconsistent Security Measures:**
+  - The absence of content wiping in the flow contradicts the security requirements outlined in the command definitions.
+
+#### **Sections Involved:**
+
+- **Flow:**
+  - D1.1.2 Granule Undelegation Flow
+
+- **Command Definition:**
+  - B4.3.6 `RMI_GRANULE_UNDELEGATE` Command
+
+--------------------------------------------------------------------------------------------------------------------
+[TP]
+D1.1.2 is inconsistent with B4.3.6.3 Success conditions (see `gran_content`).
+====================================================================================================================
+
+### **3. Contradiction Regarding Granule Content Wiping During Delegation**
+
+#### **Description of the Contradiction:**
+
+- **Flow D1.1.1 (Granule Delegation Flow):**
+  - Includes a note: "Before the granule is used (either by the RMM, or mapped into a Realm), it will be zero-filled by the RMM."
+  - This suggests that Granule content wiping occurs during or immediately after delegation.
+
+- **Command Definition in B4.3.5 `RMI_GRANULE_DELEGATE`:**
+  - **Success Conditions:** There is **no mention** of Granule content wiping during the delegation process.
+  - The command's success conditions only update the Granule's state and GPT entry.
+
+#### **Implications:**
+
+- **Unclear Security Protocol:**
+  - The discrepancy leads to confusion about when Granule content wiping should occur.
+  - It is unclear whether the content wiping is mandatory during delegation or deferred until the Granule is utilized.
+
+#### **Sections Involved:**
+
+- **Flow:**
+  - D1.1.1 Granule Delegation Flow
+
+- **Command Definition:**
+  - B4.3.5 `RMI_GRANULE_DELEGATE` Command
+
+--------------------------------------------------------------------------------------------------------------------
+[TP]
+D1.1.1 is inconsistent with B4.3.5.3 Success conditions (wiping is missing).
+====================================================================================================================
+
+#### **Description of the Contradiction:**
+
+- **Section B4.3.4 `RMI_FEATURES` Command:**
+  - **Input Values Table:** Specifies that `index` can be `0` to access Feature Register 0.
+  - **Success Conditions:**
+    - If `index != 0`, then `value == Zeros()`.
+  - **Failure Conditions:** States that there are no failure conditions for `RMI_FEATURES`.
+
+- **Potential Issue:**
+  - The success condition where `index != 0` seems contradictory because using an unsupported index does not return an error but returns zeros.
+  - This behavior might imply that any index is acceptable, which contradicts the initial specification that only `index = 0` is valid.
+
+#### **Implications:**
+
+- **Ambiguity in API Usage:**
+  - Users may be confused about acceptable index values and whether an index of `0` is the only valid input.
+- **Inconsistent Error Handling:**
+  - Returning zeros for unsupported indexes instead of an error may lead to silent failures or misinterpretation of the features supported by the RMM.
+
+#### **Sections Involved:**
+
+- **Command Definition:**
+  - B4.3.4 `RMI_FEATURES` Command
+
+--------------------------------------------------------------------------------------------------------------------
+[FP]
+Using success conditions instead of failure conditions for `index != 0` is an Arm's design decision.
+====================================================================================================================
+
+### 3. **Inconsistent Ordering of Failure Conditions in `RMI_REC_DESTROY` Command**
+
+**Issue:**
+
+- **Section B4.3.13 `RMI_REC_DESTROY` Command:**
+  - **Failure Conditions (Section B4.3.13.2):**
+    - `rec_gran_state` checks if `Granule(rec_ptr).state != REC`.
+    - `rec_state` checks if `rec.state == REC_RUNNING`.
+
+  - **Failure Condition Ordering (Section B4.3.13.2.1):**
+    - Specifies that `[rec_bound, rec_gran_state] < [rec_state]`, implying that `rec_gran_state` should be checked before `rec_state`.
+
+  - **Ordering Diagram:**
+    ```
+    RMI_ERROR_INPUT
+    rec_align rec_bound
+    rec_gran_state
+    RMI_ERROR_REC
+    rec_state
+    ```
+    - Here, `rec_state` is shown after `rec_bound` but before `rec_gran_state`, which is **inconsistent** with the textual ordering.
+
+**Contradiction:**
+
+- The textual description indicates that `rec_gran_state` should be checked **before** `rec_state`. However, the ordering diagram suggests the opposite, placing `rec_state` before `rec_gran_state`.
+
+**Implication:**
+
+- This inconsistency can lead to ambiguity in the implementation, affecting the order in which failure conditions are checked. It may cause incorrect error codes to be returned if conditions are not evaluated in the intended sequence.
+
+--------------------------------------------------------------------------------------------------------------------
+[FP]
+This is caused by a parsing error of the ordering diagram.
+====================================================================================================================
+
+### 8. **Inconsistent Descriptions of REC Index Usage**
+
+**Issue:**
+
+- **Section B4.3.12 `RMI_REC_CREATE` Command:**
+  - **Failure Conditions (Section B4.3.12.2):**
+    - `mpidr_index` precondition requires that `RecIndex(params.mpidr) == realm.rec_index`.
+  - **Flow Diagram (Section D1.2.4 REC Creation Flow):**
+    - Mentions that the `mpidr` value can be used by software to identify the REC.
+
+**Contradiction:**
+
+- The requirement that `RecIndex(params.mpidr)` matches `realm.rec_index` implies that RECs must be created with sequential `mpidr` values, which might not align with the software's use of `mpidr` for identification purposes.
+
+**Implication:**
+
+- This could restrict the software's ability to assign `mpidr` values freely, potentially causing issues in REC identification and management within a Realm.
+
+--------------------------------------------------------------------------------------------------------------------
+[FP]
+It is more about the policy of assigning MPIDR values from RMM not from the Host (an Arm's design decision), and it does not contradict REC identification.
+====================================================================================================================
